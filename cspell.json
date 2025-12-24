@@ -30,7 +30,8 @@
     "tarpaulin",
     "clippy",
     "rustfmt",
-    "codegen"
+    "codegen",
+    "figlet"
   ],
   "ignorePaths": [
     ".centy-manifest.json"
