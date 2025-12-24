@@ -326,6 +326,64 @@ impl AppState {
         }
     }
 
+    /// Move selection left in grid
+    pub fn move_selection_left(&mut self, columns: usize) {
+        if columns == 0 {
+            return;
+        }
+        let col = self.selected_index % columns;
+        if col > 0 {
+            self.selected_index -= 1;
+        }
+    }
+
+    /// Move selection right in grid
+    pub fn move_selection_right(&mut self, columns: usize, total: usize) {
+        if columns == 0 || total == 0 {
+            return;
+        }
+        let col = self.selected_index % columns;
+        if col < columns - 1 && self.selected_index + 1 < total {
+            self.selected_index += 1;
+        }
+    }
+
+    /// Move selection up in grid (by one row)
+    pub fn move_selection_up_grid(&mut self, columns: usize) {
+        if columns == 0 {
+            return;
+        }
+        if self.selected_index >= columns {
+            self.selected_index -= columns;
+        }
+    }
+
+    /// Move selection down in grid (by one row)
+    pub fn move_selection_down_grid(&mut self, columns: usize, total: usize) {
+        if columns == 0 || total == 0 {
+            return;
+        }
+        let new_index = self.selected_index + columns;
+        if new_index < total {
+            self.selected_index = new_index;
+        } else {
+            // If moving down would go past end, try to move to last row same column
+            let current_row = self.selected_index / columns;
+            let last_row = (total - 1) / columns;
+            if current_row < last_row {
+                // Move to same column in last row, or last item if column doesn't exist
+                let target_col = self.selected_index % columns;
+                let last_row_start = last_row * columns;
+                let potential_target = last_row_start + target_col;
+                if potential_target < total {
+                    self.selected_index = potential_target;
+                } else {
+                    self.selected_index = total - 1;
+                }
+            }
+        }
+    }
+
     /// Reset selection
     pub fn reset_selection(&mut self) {
         self.selected_index = 0;

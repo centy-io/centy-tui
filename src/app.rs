@@ -19,6 +19,8 @@ pub struct App {
     pub copy_message: Option<String>,
     /// Splash screen animation state
     pub splash_state: Option<SplashState>,
+    /// Terminal size for grid calculations (height, width)
+    pub terminal_size: Option<(u16, u16)>,
 }
 
 impl App {
@@ -48,6 +50,7 @@ impl App {
             status_message: None,
             copy_message: None,
             splash_state: Some(SplashState::new(LogoStyle::default())),
+            terminal_size: None,
         })
     }
 
@@ -73,6 +76,29 @@ impl App {
     /// Check if app should quit
     pub fn should_quit(&self) -> bool {
         self.quit
+    }
+
+    /// Calculate number of columns for project grid based on terminal width
+    pub fn calculate_project_grid_columns(&self) -> usize {
+        // Use stored terminal size or default
+        // terminal_size is (height, width)
+        let width = self
+            .terminal_size
+            .map(|(_, w)| w)
+            .unwrap_or(80);
+
+        // Subtract sidebar width (20) and outer borders (2)
+        let usable_width = width.saturating_sub(22);
+
+        const MIN_CARD_WIDTH: u16 = 18;
+        const CARD_SPACING_H: u16 = 1;
+
+        let columns = if usable_width >= MIN_CARD_WIDTH {
+            ((usable_width + CARD_SPACING_H) / (MIN_CARD_WIDTH + CARD_SPACING_H)) as usize
+        } else {
+            1
+        };
+        columns.max(1)
     }
 
     /// Handle a key event
@@ -121,13 +147,24 @@ impl App {
 
     /// Handle keys in Projects view
     async fn handle_projects_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Calculate grid dimensions for navigation
+        let columns = self.calculate_project_grid_columns();
+        let total = self.state.sorted_projects().len();
+
         match key.code {
+            // Vertical navigation (moves by row in grid)
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state
-                    .move_selection_down(self.state.sorted_projects().len());
+                self.state.move_selection_down_grid(columns, total);
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                self.state.move_selection_up();
+                self.state.move_selection_up_grid(columns);
+            }
+            // Horizontal navigation (moves within row in grid)
+            KeyCode::Char('h') | KeyCode::Left => {
+                self.state.move_selection_left(columns);
+            }
+            KeyCode::Char('l') | KeyCode::Right => {
+                self.state.move_selection_right(columns, total);
             }
             KeyCode::Enter => {
                 let project_path = self
@@ -665,8 +702,7 @@ impl App {
         match self.state.current_view {
             View::Splash => self.handle_splash_mouse(mouse).await?,
             View::Projects => {
-                let len = self.state.sorted_projects().len();
-                self.handle_list_mouse(mouse, len).await?
+                self.handle_projects_grid_mouse(mouse).await?
             }
             View::Issues => {
                 let len = self.state.sorted_issues().len();
@@ -728,6 +764,7 @@ impl App {
         Ok(false)
     }
 
+    /// Handle mouse events in list views (Issues, PRs, Docs)
     async fn handle_list_mouse(&mut self, mouse: MouseEvent, list_len: usize) -> Result<()> {
         const MAIN_AREA_START_X: u16 = 20;
         const LIST_ITEMS_START_Y: u16 = 1;
@@ -747,6 +784,62 @@ impl App {
         Ok(())
     }
 
+    /// Handle mouse events in Projects grid view
+    async fn handle_projects_grid_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        const MAIN_AREA_START_X: u16 = 20;
+        const GRID_START_Y: u16 = 2; // After outer border (1) + inner content start
+        const MIN_CARD_WIDTH: u16 = 18;
+        const CARD_HEIGHT: u16 = 4;
+        const CARD_SPACING_H: u16 = 1;
+
+        let columns = self.calculate_project_grid_columns();
+        let total = self.state.sorted_projects().len();
+
+        if total == 0 {
+            return Ok(());
+        }
+
+        // Calculate card width based on available space
+        let terminal_width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
+        let usable_width = terminal_width.saturating_sub(MAIN_AREA_START_X + 2);
+        let total_spacing = (columns.saturating_sub(1) as u16) * CARD_SPACING_H;
+        let card_width = if columns > 0 {
+            (usable_width.saturating_sub(total_spacing)) / columns as u16
+        } else {
+            usable_width
+        };
+        let card_width = card_width.max(MIN_CARD_WIDTH);
+
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                self.state.move_selection_up_grid(columns);
+            }
+            MouseEventKind::ScrollDown => {
+                self.state.move_selection_down_grid(columns, total);
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                if mouse.column >= MAIN_AREA_START_X && mouse.row >= GRID_START_Y {
+                    let rel_x = mouse.column - MAIN_AREA_START_X - 1; // -1 for border
+                    let rel_y = mouse.row - GRID_START_Y;
+
+                    // Calculate which card was clicked
+                    let col = (rel_x / (card_width + CARD_SPACING_H)) as usize;
+                    let row = (rel_y / CARD_HEIGHT) as usize;
+
+                    if col < columns {
+                        let clicked_index = row * columns + col;
+                        if clicked_index < total {
+                            self.state.selected_index = clicked_index;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle mouse events for scrollable content views (Detail views, Config)
     async fn handle_scroll_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         match mouse.kind {
             MouseEventKind::ScrollUp => self.state.scroll_up(),
