@@ -16,7 +16,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         .state
         .selected_project_path
         .as_ref()
-        .and_then(|p| p.split('/').last())
+        .and_then(|p| p.split('/').next_back())
         .unwrap_or("Project");
 
     // Header with sort info
@@ -26,7 +26,12 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         app.state.issue_sort_direction.symbol()
     );
 
-    let closed_count = app.state.issues.iter().filter(|i| i.metadata.status == "closed").count();
+    let closed_count = app
+        .state
+        .issues
+        .iter()
+        .filter(|i| i.metadata.status == "closed")
+        .count();
     let filter_label = if closed_count > 0 {
         if app.state.show_closed_issues {
             format!("({} closed)", closed_count)
@@ -166,11 +171,23 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
         // Timestamps
         Line::from(vec![
             Span::styled("Created: ", Style::default().fg(Color::DarkGray)),
-            Span::raw(issue.metadata.created_at.format("%Y-%m-%d %H:%M").to_string()),
+            Span::raw(
+                issue
+                    .metadata
+                    .created_at
+                    .format("%Y-%m-%d %H:%M")
+                    .to_string(),
+            ),
         ]),
         Line::from(vec![
             Span::styled("Updated: ", Style::default().fg(Color::DarkGray)),
-            Span::raw(issue.metadata.updated_at.format("%Y-%m-%d %H:%M").to_string()),
+            Span::raw(
+                issue
+                    .metadata
+                    .updated_at
+                    .format("%Y-%m-%d %H:%M")
+                    .to_string(),
+            ),
         ]),
         Line::from(""),
         // Separator
@@ -182,7 +199,9 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
         // Description header
         Line::from(Span::styled(
             "Description",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )),
     ];
 

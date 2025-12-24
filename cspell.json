@@ -1,0 +1,38 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "centy",
+    "displayNumber",
+    "createdAt",
+    "updatedAt",
+    "compacted",
+    "priorityLevels",
+    "allowedStates",
+    "stateColors",
+    "priorityColors",
+    "autoCloseOnComplete",
+    "updateStatusOnStart",
+    "allowDirectEdits",
+    "centyVersion",
+    "schemaVersion",
+    "ratatui",
+    "crossterm",
+    "tokio",
+    "tonic",
+    "prost",
+    "serde",
+    "anyhow",
+    "thiserror",
+    "tracing",
+    "chrono",
+    "arboard",
+    "tarpaulin",
+    "clippy",
+    "rustfmt",
+    "codegen"
+  ],
+  "ignorePaths": [
+    ".centy-manifest.json"
+  ]
+}

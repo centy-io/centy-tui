@@ -1,13 +1,13 @@
 //! UI module for rendering the TUI
 
-mod layout;
-mod projects;
-mod issues;
-mod prs;
-mod docs;
-mod forms;
 mod config_panel;
 mod daemon_panel;
+mod docs;
+mod forms;
+mod issues;
+mod layout;
+mod projects;
+mod prs;
 
 use crate::app::App;
 use crate::state::View;

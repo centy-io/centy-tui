@@ -16,7 +16,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         .state
         .selected_project_path
         .as_ref()
-        .and_then(|p| p.split('/').last())
+        .and_then(|p| p.split('/').next_back())
         .unwrap_or("Project");
 
     if docs.is_empty() {
@@ -113,7 +113,9 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
         // Content header
         Line::from(Span::styled(
             "Content",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
     ];
@@ -121,27 +123,21 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
     // Add content lines
     for line in doc.content.lines() {
         // Basic markdown rendering
-        let styled_line = if line.starts_with("# ") {
+        let styled_line = if let Some(stripped) = line.strip_prefix("# ") {
             Line::from(Span::styled(
-                &line[2..],
+                stripped,
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ))
-        } else if line.starts_with("## ") {
-            Line::from(Span::styled(
-                &line[3..],
-                Style::default().fg(Color::Cyan),
-            ))
-        } else if line.starts_with("### ") {
-            Line::from(Span::styled(
-                &line[4..],
-                Style::default().fg(Color::Blue),
-            ))
-        } else if line.starts_with("- ") || line.starts_with("* ") {
+        } else if let Some(stripped) = line.strip_prefix("## ") {
+            Line::from(Span::styled(stripped, Style::default().fg(Color::Cyan)))
+        } else if let Some(stripped) = line.strip_prefix("### ") {
+            Line::from(Span::styled(stripped, Style::default().fg(Color::Blue)))
+        } else if let Some(stripped) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
             Line::from(vec![
                 Span::styled("• ", Style::default().fg(Color::Cyan)),
-                Span::raw(&line[2..]),
+                Span::raw(stripped),
             ])
         } else if line.starts_with("```") {
             Line::from(Span::styled(line, Style::default().fg(Color::DarkGray)))

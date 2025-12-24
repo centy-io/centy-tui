@@ -68,7 +68,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
     content.push(Line::from(Span::styled(
         "Actions",
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
     )));
     content.push(Line::from(""));
     content.push(Line::from(vec![

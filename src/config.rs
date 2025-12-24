@@ -7,6 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 /// User configuration for the TUI
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TuiConfig {
     /// Issue sort field
@@ -25,6 +26,7 @@ pub struct TuiConfig {
     pub daemon_address: Option<String>,
 }
 
+#[allow(dead_code)]
 impl TuiConfig {
     /// Get the config file path
     fn config_path() -> Option<PathBuf> {

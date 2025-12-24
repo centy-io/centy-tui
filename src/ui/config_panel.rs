@@ -15,7 +15,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         .state
         .selected_project_path
         .as_ref()
-        .and_then(|p| p.split('/').last())
+        .and_then(|p| p.split('/').next_back())
         .unwrap_or("Project");
 
     let mut content = vec![

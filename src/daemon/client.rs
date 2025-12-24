@@ -4,7 +4,9 @@
 //! via gRPC. For now, it uses a mock implementation that can be replaced
 //! with actual gRPC calls once the proto files are integrated.
 
-use crate::state::{Config, DaemonInfo, Doc, Issue, IssueMetadata, Project, PrMetadata, PullRequest};
+use crate::state::{
+    Config, DaemonInfo, Doc, Issue, IssueMetadata, PrMetadata, Project, PullRequest,
+};
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -15,14 +17,15 @@ pub struct DaemonClient {
     #[allow(dead_code)]
     address: String,
     /// Whether the client is connected
+    #[allow(dead_code)]
     connected: bool,
 }
 
 impl DaemonClient {
     /// Create a new daemon client
     pub async fn new() -> Result<Self> {
-        let address = std::env::var("CENTY_DAEMON_ADDRESS")
-            .unwrap_or_else(|_| "127.0.0.1:50051".to_string());
+        let address =
+            std::env::var("CENTY_DAEMON_ADDRESS").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
 
         Ok(Self {
             address,
@@ -133,28 +136,26 @@ impl DaemonClient {
     /// List PRs for a project
     pub async fn list_prs(&self, _project_path: &str) -> Result<Vec<PullRequest>> {
         // TODO: Implement actual gRPC call
-        Ok(vec![
-            PullRequest {
-                id: "pr-001".to_string(),
-                display_number: 1,
-                title: "Add user authentication".to_string(),
-                description: "Implements login and registration".to_string(),
-                metadata: PrMetadata {
-                    status: "open".to_string(),
-                    priority: 1,
-                    priority_label: Some("high".to_string()),
-                    source_branch: "feature/auth".to_string(),
-                    target_branch: "main".to_string(),
-                    linked_issues: vec!["abc-123".to_string()],
-                    reviewers: vec!["alice".to_string()],
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                    merged_at: None,
-                    closed_at: None,
-                    custom_fields: HashMap::new(),
-                },
+        Ok(vec![PullRequest {
+            id: "pr-001".to_string(),
+            display_number: 1,
+            title: "Add user authentication".to_string(),
+            description: "Implements login and registration".to_string(),
+            metadata: PrMetadata {
+                status: "open".to_string(),
+                priority: 1,
+                priority_label: Some("high".to_string()),
+                source_branch: "feature/auth".to_string(),
+                target_branch: "main".to_string(),
+                linked_issues: vec!["abc-123".to_string()],
+                reviewers: vec!["alice".to_string()],
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                merged_at: None,
+                closed_at: None,
+                custom_fields: HashMap::new(),
             },
-        ])
+        }])
     }
 
     /// List docs for a project
@@ -179,6 +180,7 @@ impl DaemonClient {
     }
 
     /// Get project configuration
+    #[allow(dead_code)]
     pub async fn get_config(&self, _project_path: &str) -> Result<Config> {
         // TODO: Implement actual gRPC call
         Ok(Config {
@@ -194,6 +196,7 @@ impl DaemonClient {
     }
 
     /// Get daemon information
+    #[allow(dead_code)]
     pub async fn get_daemon_info(&self) -> Result<DaemonInfo> {
         // TODO: Implement actual gRPC call
         Ok(DaemonInfo {
@@ -204,18 +207,27 @@ impl DaemonClient {
     }
 
     /// Set project favorite status
-    pub async fn set_project_favorite(&self, _project_path: &str, _is_favorite: bool) -> Result<()> {
+    pub async fn set_project_favorite(
+        &self,
+        _project_path: &str,
+        _is_favorite: bool,
+    ) -> Result<()> {
         // TODO: Implement actual gRPC call
         Ok(())
     }
 
     /// Set project archived status
-    pub async fn set_project_archived(&self, _project_path: &str, _is_archived: bool) -> Result<()> {
+    pub async fn set_project_archived(
+        &self,
+        _project_path: &str,
+        _is_archived: bool,
+    ) -> Result<()> {
         // TODO: Implement actual gRPC call
         Ok(())
     }
 
     /// Untrack a project
+    #[allow(dead_code)]
     pub async fn untrack_project(&self, _project_path: &str) -> Result<()> {
         // TODO: Implement actual gRPC call
         Ok(())
@@ -261,6 +273,7 @@ impl DaemonClient {
     }
 
     /// Update an existing PR
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_pr(
         &self,
         _project_path: &str,

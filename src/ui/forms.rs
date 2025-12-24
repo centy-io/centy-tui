@@ -3,7 +3,7 @@
 use crate::app::App;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -46,9 +46,13 @@ fn draw_field(
         let mut lines = lines;
         if is_active {
             if let Some(last) = lines.last_mut() {
-                last.spans.push(Span::styled(cursor, Style::default().fg(Color::Cyan)));
+                last.spans
+                    .push(Span::styled(cursor, Style::default().fg(Color::Cyan)));
             } else {
-                lines.push(Line::from(Span::styled(cursor, Style::default().fg(Color::Cyan))));
+                lines.push(Line::from(Span::styled(
+                    cursor,
+                    Style::default().fg(Color::Cyan),
+                )));
             }
         }
         Paragraph::new(lines)
@@ -106,7 +110,15 @@ pub fn draw_issue_create(frame: &mut Frame, area: Rect, app: &App) {
 
     let priority_display = match app.state.form_priority {
         0 => "Default".to_string(),
-        p => format!("{} ({})", p, match p { 1 => "high", 2 => "medium", _ => "low" }),
+        p => format!(
+            "{} ({})",
+            p,
+            match p {
+                1 => "high",
+                2 => "medium",
+                _ => "low",
+            }
+        ),
     };
     draw_field(
         frame,
@@ -177,7 +189,15 @@ pub fn draw_issue_edit(frame: &mut Frame, area: Rect, app: &App) {
 
     let priority_display = match app.state.form_priority {
         0 => "Default".to_string(),
-        p => format!("{} ({})", p, match p { 1 => "high", 2 => "medium", _ => "low" }),
+        p => format!(
+            "{} ({})",
+            p,
+            match p {
+                1 => "high",
+                2 => "medium",
+                _ => "low",
+            }
+        ),
     };
     draw_field(
         frame,

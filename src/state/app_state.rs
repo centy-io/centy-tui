@@ -25,6 +25,7 @@ pub enum View {
 }
 
 /// View parameters for navigation
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct ViewParams {
     pub issue_id: Option<String>,
@@ -167,6 +168,7 @@ pub struct Issue {
     pub metadata: IssueMetadata,
 }
 
+#[allow(dead_code)]
 impl Issue {
     pub fn priority_color(&self) -> &'static str {
         match self.metadata.priority {
@@ -177,11 +179,14 @@ impl Issue {
     }
 
     pub fn priority_label(&self) -> &str {
-        self.metadata.priority_label.as_deref().unwrap_or(match self.metadata.priority {
-            1 => "high",
-            2 => "med",
-            _ => "low",
-        })
+        self.metadata
+            .priority_label
+            .as_deref()
+            .unwrap_or(match self.metadata.priority {
+                1 => "high",
+                2 => "med",
+                _ => "low",
+            })
     }
 }
 
@@ -212,6 +217,7 @@ pub struct PullRequest {
     pub metadata: PrMetadata,
 }
 
+#[allow(dead_code)]
 impl PullRequest {
     pub fn status_color(&self) -> &'static str {
         match self.metadata.status.as_str() {
@@ -370,7 +376,9 @@ impl AppState {
 
     /// Get sorted issues
     pub fn sorted_issues(&self) -> Vec<&Issue> {
-        let mut issues: Vec<_> = self.issues.iter()
+        let mut issues: Vec<_> = self
+            .issues
+            .iter()
             .filter(|i| self.show_closed_issues || i.metadata.status != "closed")
             .collect();
 
@@ -394,10 +402,12 @@ impl AppState {
 
     /// Get sorted PRs
     pub fn sorted_prs(&self) -> Vec<&PullRequest> {
-        let mut prs: Vec<_> = self.prs.iter()
+        let mut prs: Vec<_> = self
+            .prs
+            .iter()
             .filter(|p| {
-                self.show_merged_prs ||
-                (p.metadata.status != "merged" && p.metadata.status != "closed")
+                self.show_merged_prs
+                    || (p.metadata.status != "merged" && p.metadata.status != "closed")
             })
             .collect();
 
@@ -450,42 +460,36 @@ impl AppState {
         let ch = if shift { c.to_ascii_uppercase() } else { c };
 
         match self.current_view {
-            View::IssueCreate | View::IssueEdit => {
-                match self.active_form_field {
-                    0 => self.form_title.push(ch),
-                    1 => self.form_description.push(ch),
-                    2 => {
-                        if let Some(d) = c.to_digit(10) {
-                            self.form_priority = d;
-                        }
+            View::IssueCreate | View::IssueEdit => match self.active_form_field {
+                0 => self.form_title.push(ch),
+                1 => self.form_description.push(ch),
+                2 => {
+                    if let Some(d) = c.to_digit(10) {
+                        self.form_priority = d;
                     }
-                    3 => self.form_status.push(ch),
-                    _ => {}
                 }
-            }
-            View::PrCreate | View::PrEdit => {
-                match self.active_form_field {
-                    0 => self.form_title.push(ch),
-                    1 => self.form_description.push(ch),
-                    2 => self.form_source_branch.push(ch),
-                    3 => self.form_target_branch.push(ch),
-                    4 => {
-                        if let Some(d) = c.to_digit(10) {
-                            self.form_priority = d;
-                        }
+                3 => self.form_status.push(ch),
+                _ => {}
+            },
+            View::PrCreate | View::PrEdit => match self.active_form_field {
+                0 => self.form_title.push(ch),
+                1 => self.form_description.push(ch),
+                2 => self.form_source_branch.push(ch),
+                3 => self.form_target_branch.push(ch),
+                4 => {
+                    if let Some(d) = c.to_digit(10) {
+                        self.form_priority = d;
                     }
-                    5 => self.form_status.push(ch),
-                    _ => {}
                 }
-            }
-            View::DocCreate => {
-                match self.active_form_field {
-                    0 => self.form_title.push(ch),
-                    1 => self.form_description.push(ch),
-                    2 => self.form_slug.push(ch),
-                    _ => {}
-                }
-            }
+                5 => self.form_status.push(ch),
+                _ => {}
+            },
+            View::DocCreate => match self.active_form_field {
+                0 => self.form_title.push(ch),
+                1 => self.form_description.push(ch),
+                2 => self.form_slug.push(ch),
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -493,32 +497,48 @@ impl AppState {
     /// Handle backspace in form
     pub fn form_backspace(&mut self) {
         match self.current_view {
-            View::IssueCreate | View::IssueEdit => {
-                match self.active_form_field {
-                    0 => { self.form_title.pop(); }
-                    1 => { self.form_description.pop(); }
-                    3 => { self.form_status.pop(); }
-                    _ => {}
+            View::IssueCreate | View::IssueEdit => match self.active_form_field {
+                0 => {
+                    self.form_title.pop();
                 }
-            }
-            View::PrCreate | View::PrEdit => {
-                match self.active_form_field {
-                    0 => { self.form_title.pop(); }
-                    1 => { self.form_description.pop(); }
-                    2 => { self.form_source_branch.pop(); }
-                    3 => { self.form_target_branch.pop(); }
-                    5 => { self.form_status.pop(); }
-                    _ => {}
+                1 => {
+                    self.form_description.pop();
                 }
-            }
-            View::DocCreate => {
-                match self.active_form_field {
-                    0 => { self.form_title.pop(); }
-                    1 => { self.form_description.pop(); }
-                    2 => { self.form_slug.pop(); }
-                    _ => {}
+                3 => {
+                    self.form_status.pop();
                 }
-            }
+                _ => {}
+            },
+            View::PrCreate | View::PrEdit => match self.active_form_field {
+                0 => {
+                    self.form_title.pop();
+                }
+                1 => {
+                    self.form_description.pop();
+                }
+                2 => {
+                    self.form_source_branch.pop();
+                }
+                3 => {
+                    self.form_target_branch.pop();
+                }
+                5 => {
+                    self.form_status.pop();
+                }
+                _ => {}
+            },
+            View::DocCreate => match self.active_form_field {
+                0 => {
+                    self.form_title.pop();
+                }
+                1 => {
+                    self.form_description.pop();
+                }
+                2 => {
+                    self.form_slug.pop();
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -536,6 +556,7 @@ impl AppState {
     }
 
     /// Load issue data into form for editing
+    #[allow(dead_code)]
     pub fn load_issue_to_form(&mut self, issue: &Issue) {
         self.form_title = issue.title.clone();
         self.form_description = issue.description.clone();
@@ -544,6 +565,7 @@ impl AppState {
     }
 
     /// Load PR data into form for editing
+    #[allow(dead_code)]
     pub fn load_pr_to_form(&mut self, pr: &PullRequest) {
         self.form_title = pr.title.clone();
         self.form_description = pr.description.clone();

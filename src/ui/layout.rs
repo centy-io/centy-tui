@@ -61,16 +61,25 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
             // Determine if this item should be highlighted
             let is_selected = match idx {
                 0 => matches!(app.state.current_view, View::Projects),
-                1 => matches!(app.state.current_view, View::Issues | View::IssueDetail | View::IssueCreate | View::IssueEdit),
-                2 => matches!(app.state.current_view, View::Prs | View::PrDetail | View::PrCreate | View::PrEdit),
-                3 => matches!(app.state.current_view, View::Docs | View::DocDetail | View::DocCreate),
+                1 => matches!(
+                    app.state.current_view,
+                    View::Issues | View::IssueDetail | View::IssueCreate | View::IssueEdit
+                ),
+                2 => matches!(
+                    app.state.current_view,
+                    View::Prs | View::PrDetail | View::PrCreate | View::PrEdit
+                ),
+                3 => matches!(
+                    app.state.current_view,
+                    View::Docs | View::DocDetail | View::DocCreate
+                ),
                 4 => matches!(app.state.current_view, View::Config),
                 5 => matches!(app.state.current_view, View::Daemon),
                 _ => false,
             };
 
             // Check if item requires project selection
-            let requires_project = idx >= 1 && idx <= 4;
+            let requires_project = (1..=4).contains(&idx);
             let is_enabled = !requires_project || has_project;
 
             let style = if is_selected {
@@ -139,7 +148,7 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
 
     // Project path
     if let Some(path) = &app.state.selected_project_path {
-        let project_name = path.split('/').last().unwrap_or(path);
+        let project_name = path.split('/').next_back().unwrap_or(path);
         spans.push(Span::raw(" | "));
         spans.push(Span::styled(
             format!("📁 {project_name}"),
@@ -150,8 +159,7 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
     // Quit hint on the right
     let quit_hint = " q:quit ";
 
-    let status = Paragraph::new(Line::from(spans))
-        .style(Style::default().bg(Color::DarkGray));
+    let status = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
 
     frame.render_widget(status, status_area);
 
@@ -162,8 +170,8 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
         width: quit_hint.len() as u16,
         height: 1,
     };
-    let quit_widget = Paragraph::new(quit_hint)
-        .style(Style::default().bg(Color::DarkGray).fg(Color::Gray));
+    let quit_widget =
+        Paragraph::new(quit_hint).style(Style::default().bg(Color::DarkGray).fg(Color::Gray));
     frame.render_widget(quit_widget, quit_area);
 }
 

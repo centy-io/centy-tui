@@ -16,7 +16,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         .state
         .selected_project_path
         .as_ref()
-        .and_then(|p| p.split('/').last())
+        .and_then(|p| p.split('/').next_back())
         .unwrap_or("Project");
 
     let sort_label = format!(
@@ -119,12 +119,21 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
                 Span::styled(prefix, style),
                 Span::styled(number, Style::default().fg(Color::Cyan)),
                 Span::raw(" "),
-                Span::styled(format!("[{}]", priority_label), Style::default().fg(priority_color)),
+                Span::styled(
+                    format!("[{}]", priority_label),
+                    Style::default().fg(priority_color),
+                ),
                 Span::raw(" "),
-                Span::styled(format!("[{}]", pr.metadata.status), Style::default().fg(status_color)),
+                Span::styled(
+                    format!("[{}]", pr.metadata.status),
+                    Style::default().fg(status_color),
+                ),
                 Span::raw(" "),
                 Span::styled(&pr.title, style),
-                Span::styled(format!(" {}", branches), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!(" {}", branches),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]);
 
             ListItem::new(line)
@@ -203,12 +212,17 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
         // Branches
         Line::from(Span::styled(
             "Branches",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(vec![
             Span::styled(&pr.metadata.source_branch, Style::default().fg(Color::Cyan)),
             Span::styled(" → ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&pr.metadata.target_branch, Style::default().fg(Color::Green)),
+            Span::styled(
+                &pr.metadata.target_branch,
+                Style::default().fg(Color::Green),
+            ),
         ]),
         Line::from(""),
     ];
@@ -217,7 +231,9 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
     if !pr.metadata.linked_issues.is_empty() {
         content.push(Line::from(Span::styled(
             "Linked Issues",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
         for issue in &pr.metadata.linked_issues {
             content.push(Line::from(Span::styled(
@@ -232,7 +248,9 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
     if !pr.metadata.reviewers.is_empty() {
         content.push(Line::from(Span::styled(
             "Reviewers",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
         for reviewer in &pr.metadata.reviewers {
             content.push(Line::from(format!("  {}", reviewer)));
@@ -243,7 +261,9 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
     // Timestamps
     content.push(Line::from(Span::styled(
         "Timeline",
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
     )));
     content.push(Line::from(vec![
         Span::styled("Created: ", Style::default().fg(Color::DarkGray)),
@@ -275,7 +295,9 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
     content.push(Line::from(""));
     content.push(Line::from(Span::styled(
         "Description",
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
     )));
 
     if pr.description.is_empty() {

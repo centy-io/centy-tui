@@ -102,9 +102,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 /// Draw untrack confirmation dialog
 fn draw_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
     let project = app.state.projects.get(app.state.selected_index);
-    let project_name = project
-        .map(|p| p.display_name())
-        .unwrap_or("Unknown");
+    let project_name = project.map(|p| p.display_name()).unwrap_or("Unknown");
 
     let dialog_width = 50;
     let dialog_height = 7;
@@ -121,7 +119,9 @@ fn draw_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
     let content = vec![
         Line::from(Span::styled(
             "Remove project from tracking?",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(format!("\"{}\"", project_name)),
@@ -132,9 +132,17 @@ fn draw_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::from(vec![
             Span::raw("Press "),
-            Span::styled("y", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "y",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" to confirm, "),
-            Span::styled("n", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "n",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" to cancel"),
         ]),
     ];
