@@ -879,7 +879,85 @@ impl App {
                 if mouse.column >= main_area_start_x && mouse.row >= LIST_ITEMS_START_Y {
                     let clicked_index = (mouse.row - LIST_ITEMS_START_Y) as usize;
                     if clicked_index < list_len {
-                        self.state.selected_index = clicked_index;
+                        // Check for double-click: same index clicked within 400ms
+                        let is_double_click = self
+                            .state
+                            .last_click_index
+                            .map(|last_idx| {
+                                last_idx == clicked_index
+                                    && self
+                                        .state
+                                        .last_click_time
+                                        .map(|t| t.elapsed() < Duration::from_millis(400))
+                                        .unwrap_or(false)
+                            })
+                            .unwrap_or(false);
+
+                        if is_double_click {
+                            // Double-click: open the item
+                            match self.state.current_view {
+                                View::Issues => {
+                                    let issue_id = self
+                                        .state
+                                        .sorted_issues()
+                                        .get(clicked_index)
+                                        .map(|i| i.id.clone());
+                                    if let Some(id) = issue_id {
+                                        self.state.selected_issue_id = Some(id.clone());
+                                        self.navigate(
+                                            View::IssueDetail,
+                                            ViewParams {
+                                                issue_id: Some(id),
+                                                ..Default::default()
+                                            },
+                                        );
+                                    }
+                                }
+                                View::Prs => {
+                                    let pr_id = self
+                                        .state
+                                        .sorted_prs()
+                                        .get(clicked_index)
+                                        .map(|p| p.id.clone());
+                                    if let Some(id) = pr_id {
+                                        self.state.selected_pr_id = Some(id.clone());
+                                        self.navigate(
+                                            View::PrDetail,
+                                            ViewParams {
+                                                pr_id: Some(id),
+                                                ..Default::default()
+                                            },
+                                        );
+                                    }
+                                }
+                                View::Docs => {
+                                    let doc_slug = self
+                                        .state
+                                        .docs
+                                        .get(clicked_index)
+                                        .map(|d| d.slug.clone());
+                                    if let Some(slug) = doc_slug {
+                                        self.state.selected_doc_slug = Some(slug.clone());
+                                        self.navigate(
+                                            View::DocDetail,
+                                            ViewParams {
+                                                doc_slug: Some(slug),
+                                                ..Default::default()
+                                            },
+                                        );
+                                    }
+                                }
+                                _ => {}
+                            }
+                            // Reset click tracking after opening
+                            self.state.last_click_time = None;
+                            self.state.last_click_index = None;
+                        } else {
+                            // Single click: select the item and update tracking
+                            self.state.selected_index = clicked_index;
+                            self.state.last_click_time = Some(Instant::now());
+                            self.state.last_click_index = Some(clicked_index);
+                        }
                     }
                 }
             }
