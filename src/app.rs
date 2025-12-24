@@ -131,49 +131,60 @@ impl App {
     async fn handle_projects_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down(self.state.projects.len());
+                self.state.move_selection_down(self.state.sorted_projects().len());
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.move_selection_up();
             }
             KeyCode::Enter => {
-                if let Some(project) = self.state.projects.get(self.state.selected_index) {
-                    self.state.selected_project_path = Some(project.path.clone());
+                let project_path = self.state.sorted_projects()
+                    .get(self.state.selected_index)
+                    .map(|p| p.path.clone());
+                if let Some(path) = project_path {
+                    self.state.selected_project_path = Some(path.clone());
                     // Load issues for selected project
-                    if let Some(path) = &self.state.selected_project_path {
-                        if let Ok(issues) = self.daemon.list_issues(path).await {
-                            self.state.issues = issues;
-                        }
+                    if let Ok(issues) = self.daemon.list_issues(&path).await {
+                        self.state.issues = issues;
                     }
                     self.navigate(View::Issues, ViewParams::default());
                 }
             }
             KeyCode::Char('f') => {
-                // Toggle favorite
-                if let Some(project) = self.state.projects.get_mut(self.state.selected_index) {
-                    let new_favorite = !project.is_favorite;
-                    if self
-                        .daemon
-                        .set_project_favorite(&project.path, new_favorite)
-                        .await
-                        .is_ok()
-                    {
-                        project.is_favorite = new_favorite;
+                // Toggle favorite - get path from sorted list, then find in mutable list
+                let project_path = self.state.sorted_projects()
+                    .get(self.state.selected_index)
+                    .map(|p| p.path.clone());
+                if let Some(path) = project_path {
+                    if let Some(project) = self.state.projects.iter_mut().find(|p| p.path == path) {
+                        let new_favorite = !project.is_favorite;
+                        if self
+                            .daemon
+                            .set_project_favorite(&project.path, new_favorite)
+                            .await
+                            .is_ok()
+                        {
+                            project.is_favorite = new_favorite;
+                            self.state.reset_selection(); // Reset since order may change
+                        }
                     }
                 }
             }
             KeyCode::Char('a') => {
                 // Archive project
-                if let Some(project) = self.state.projects.get(self.state.selected_index) {
+                let project_path = self.state.sorted_projects()
+                    .get(self.state.selected_index)
+                    .map(|p| p.path.clone());
+                if let Some(path) = project_path {
                     if self
                         .daemon
-                        .set_project_archived(&project.path, true)
+                        .set_project_archived(&path, true)
                         .await
                         .is_ok()
                     {
                         // Reload projects
                         if let Ok(projects) = self.daemon.list_projects().await {
                             self.state.projects = projects;
+                            self.state.reset_selection();
                         }
                     }
                 }
@@ -224,18 +235,21 @@ impl App {
     async fn handle_issues_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down(self.state.issues.len());
+                self.state.move_selection_down(self.state.sorted_issues().len());
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.move_selection_up();
             }
             KeyCode::Enter => {
-                if let Some(issue) = self.state.issues.get(self.state.selected_index) {
-                    self.state.selected_issue_id = Some(issue.id.clone());
+                let issue_id = self.state.sorted_issues()
+                    .get(self.state.selected_index)
+                    .map(|issue| issue.id.clone());
+                if let Some(id) = issue_id {
+                    self.state.selected_issue_id = Some(id.clone());
                     self.navigate(
                         View::IssueDetail,
                         ViewParams {
-                            issue_id: Some(issue.id.clone()),
+                            issue_id: Some(id),
                             ..Default::default()
                         },
                     );
@@ -255,17 +269,20 @@ impl App {
             KeyCode::Char('a') => {
                 // Toggle show all (including closed)
                 self.state.show_closed_issues = !self.state.show_closed_issues;
+                self.state.reset_selection();
             }
             KeyCode::Char('y') => {
                 // Copy issue title
-                if let Some(issue) = self.state.issues.get(self.state.selected_index) {
+                let sorted = self.state.sorted_issues();
+                if let Some(issue) = sorted.get(self.state.selected_index) {
                     self.copy_to_clipboard(&format!("#{} {}", issue.display_number, issue.title))?;
                     self.copy_message = Some("Copied title".to_string());
                 }
             }
             KeyCode::Char('Y') => {
                 // Copy issue UUID
-                if let Some(issue) = self.state.issues.get(self.state.selected_index) {
+                let sorted = self.state.sorted_issues();
+                if let Some(issue) = sorted.get(self.state.selected_index) {
                     self.copy_to_clipboard(&issue.id)?;
                     self.copy_message = Some("Copied UUID".to_string());
                 }
@@ -448,18 +465,21 @@ impl App {
     async fn handle_prs_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down(self.state.prs.len());
+                self.state.move_selection_down(self.state.sorted_prs().len());
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.move_selection_up();
             }
             KeyCode::Enter => {
-                if let Some(pr) = self.state.prs.get(self.state.selected_index) {
-                    self.state.selected_pr_id = Some(pr.id.clone());
+                let pr_id = self.state.sorted_prs()
+                    .get(self.state.selected_index)
+                    .map(|pr| pr.id.clone());
+                if let Some(id) = pr_id {
+                    self.state.selected_pr_id = Some(id.clone());
                     self.navigate(
                         View::PrDetail,
                         ViewParams {
-                            pr_id: Some(pr.id.clone()),
+                            pr_id: Some(id),
                             ..Default::default()
                         },
                     );
@@ -476,6 +496,7 @@ impl App {
             }
             KeyCode::Char('a') => {
                 self.state.show_merged_prs = !self.state.show_merged_prs;
+                self.state.reset_selection();
             }
             KeyCode::Esc | KeyCode::Backspace => {
                 self.go_back();
@@ -746,8 +767,8 @@ impl App {
         match self.state.current_view {
             View::Splash => self.handle_splash_mouse(mouse).await?,
             View::Projects => {
-                self.handle_list_mouse(mouse, self.state.projects.len())
-                    .await?
+                let len = self.state.sorted_projects().len();
+                self.handle_list_mouse(mouse, len).await?
             }
             View::Issues => {
                 let len = self.state.sorted_issues().len();

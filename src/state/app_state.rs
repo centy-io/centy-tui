@@ -380,6 +380,13 @@ impl AppState {
         self.reset_selection();
     }
 
+    /// Get sorted projects (favorites first)
+    pub fn sorted_projects(&self) -> Vec<&Project> {
+        let mut projects: Vec<_> = self.projects.iter().collect();
+        projects.sort_by(|a, b| b.is_favorite.cmp(&a.is_favorite));
+        projects
+    }
+
     /// Get sorted issues
     pub fn sorted_issues(&self) -> Vec<&Issue> {
         let mut issues: Vec<_> = self

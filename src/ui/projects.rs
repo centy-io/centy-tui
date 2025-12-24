@@ -26,14 +26,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    // Sort projects: favorites first
-    let mut sorted_projects: Vec<_> = projects.iter().enumerate().collect();
-    sorted_projects.sort_by(|(_, a), (_, b)| b.is_favorite.cmp(&a.is_favorite));
+    // Get sorted projects (favorites first)
+    let sorted_projects = app.state.sorted_projects();
 
     let items: Vec<ListItem> = sorted_projects
         .iter()
+        .enumerate()
         .map(|(idx, project)| {
-            let is_selected = *idx == app.state.selected_index;
+            let is_selected = idx == app.state.selected_index;
 
             // Build the display line
             let favorite_indicator = if project.is_favorite { "★ " } else { "  " };
@@ -101,7 +101,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Draw untrack confirmation dialog
 fn draw_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
-    let project = app.state.projects.get(app.state.selected_index);
+    let project = app.state.sorted_projects().get(app.state.selected_index).copied();
     let project_name = project.map(|p| p.display_name()).unwrap_or("Unknown");
 
     let dialog_width = 50;
