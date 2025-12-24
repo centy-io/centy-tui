@@ -322,7 +322,12 @@ impl App {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
                         .daemon
-                        .create_issue(path, &self.state.form_title, &self.state.form_description, self.state.form_priority)
+                        .create_issue(
+                            path,
+                            &self.state.form_title,
+                            &self.state.form_description,
+                            self.state.form_priority,
+                        )
                         .await;
                     if result.is_ok() {
                         if let Ok(issues) = self.daemon.list_issues(path).await {
@@ -335,10 +340,19 @@ impl App {
                     }
                 }
             }
-            KeyCode::Esc => { self.state.clear_form(); self.go_back(); }
-            KeyCode::Char(c) => self.state.form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
+            KeyCode::Char(c) => self
+                .state
+                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
             KeyCode::Backspace => self.state.form_backspace(),
-            KeyCode::Enter => { if self.state.active_form_field == 1 { self.state.form_description.push('\n'); } }
+            KeyCode::Enter => {
+                if self.state.active_form_field == 1 {
+                    self.state.form_description.push('\n');
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -350,10 +364,20 @@ impl App {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if let (Some(path), Some(issue_id)) = (&self.state.selected_project_path, &self.state.selected_issue_id) {
+                if let (Some(path), Some(issue_id)) = (
+                    &self.state.selected_project_path,
+                    &self.state.selected_issue_id,
+                ) {
                     let result = self
                         .daemon
-                        .update_issue(path, issue_id, &self.state.form_title, &self.state.form_description, self.state.form_priority, &self.state.form_status)
+                        .update_issue(
+                            path,
+                            issue_id,
+                            &self.state.form_title,
+                            &self.state.form_description,
+                            self.state.form_priority,
+                            &self.state.form_status,
+                        )
                         .await;
                     if result.is_ok() {
                         if let Ok(issues) = self.daemon.list_issues(path).await {
@@ -366,10 +390,19 @@ impl App {
                     }
                 }
             }
-            KeyCode::Esc => { self.state.clear_form(); self.go_back(); }
-            KeyCode::Char(c) => self.state.form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
+            KeyCode::Char(c) => self
+                .state
+                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
             KeyCode::Backspace => self.state.form_backspace(),
-            KeyCode::Enter => { if self.state.active_form_field == 1 { self.state.form_description.push('\n'); } }
+            KeyCode::Enter => {
+                if self.state.active_form_field == 1 {
+                    self.state.form_description.push('\n');
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -378,19 +411,34 @@ impl App {
     /// Handle keys in PRs view
     async fn handle_prs_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => self.state.move_selection_down(self.state.sorted_prs().len()),
+            KeyCode::Char('j') | KeyCode::Down => self
+                .state
+                .move_selection_down(self.state.sorted_prs().len()),
             KeyCode::Char('k') | KeyCode::Up => self.state.move_selection_up(),
             KeyCode::Enter => {
-                let pr_id = self.state.sorted_prs().get(self.state.selected_index).map(|pr| pr.id.clone());
+                let pr_id = self
+                    .state
+                    .sorted_prs()
+                    .get(self.state.selected_index)
+                    .map(|pr| pr.id.clone());
                 if let Some(id) = pr_id {
                     self.state.selected_pr_id = Some(id.clone());
-                    self.navigate(View::PrDetail, ViewParams { pr_id: Some(id), ..Default::default() });
+                    self.navigate(
+                        View::PrDetail,
+                        ViewParams {
+                            pr_id: Some(id),
+                            ..Default::default()
+                        },
+                    );
                 }
             }
             KeyCode::Char('n') => self.navigate(View::PrCreate, ViewParams::default()),
             KeyCode::Char('s') => self.state.cycle_pr_sort_field(),
             KeyCode::Char('S') => self.state.toggle_pr_sort_direction(),
-            KeyCode::Char('a') => { self.state.show_merged_prs = !self.state.show_merged_prs; self.state.reset_selection(); }
+            KeyCode::Char('a') => {
+                self.state.show_merged_prs = !self.state.show_merged_prs;
+                self.state.reset_selection();
+            }
             KeyCode::Esc | KeyCode::Backspace => self.go_back(),
             _ => {}
         }
@@ -402,7 +450,13 @@ impl App {
         match key.code {
             KeyCode::Char('e') => {
                 if let Some(pr_id) = &self.state.selected_pr_id {
-                    self.navigate(View::PrEdit, ViewParams { pr_id: Some(pr_id.clone()), ..Default::default() });
+                    self.navigate(
+                        View::PrEdit,
+                        ViewParams {
+                            pr_id: Some(pr_id.clone()),
+                            ..Default::default()
+                        },
+                    );
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => self.state.scroll_down(),
@@ -416,12 +470,26 @@ impl App {
     /// Handle keys in PR Create view
     async fn handle_pr_create_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Esc => { self.state.clear_form(); self.go_back(); }
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let Some(path) = &self.state.selected_project_path {
-                    let result = self.daemon.create_pr(path, &self.state.form_title, &self.state.form_description, &self.state.form_source_branch, &self.state.form_target_branch).await;
+                    let result = self
+                        .daemon
+                        .create_pr(
+                            path,
+                            &self.state.form_title,
+                            &self.state.form_description,
+                            &self.state.form_source_branch,
+                            &self.state.form_target_branch,
+                        )
+                        .await;
                     if result.is_ok() {
-                        if let Ok(prs) = self.daemon.list_prs(path).await { self.state.prs = prs; }
+                        if let Ok(prs) = self.daemon.list_prs(path).await {
+                            self.state.prs = prs;
+                        }
                         self.state.clear_form();
                         self.go_back();
                     }
@@ -429,7 +497,9 @@ impl App {
             }
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char(c) => self.state.form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
+            KeyCode::Char(c) => self
+                .state
+                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
             KeyCode::Backspace => self.state.form_backspace(),
             _ => {}
         }
@@ -439,12 +509,31 @@ impl App {
     /// Handle keys in PR Edit view
     async fn handle_pr_edit_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Esc => { self.state.clear_form(); self.go_back(); }
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if let (Some(path), Some(pr_id)) = (&self.state.selected_project_path, &self.state.selected_pr_id) {
-                    let result = self.daemon.update_pr(path, pr_id, &self.state.form_title, &self.state.form_description, &self.state.form_source_branch, &self.state.form_target_branch, &self.state.form_status).await;
+                if let (Some(path), Some(pr_id)) = (
+                    &self.state.selected_project_path,
+                    &self.state.selected_pr_id,
+                ) {
+                    let result = self
+                        .daemon
+                        .update_pr(
+                            path,
+                            pr_id,
+                            &self.state.form_title,
+                            &self.state.form_description,
+                            &self.state.form_source_branch,
+                            &self.state.form_target_branch,
+                            &self.state.form_status,
+                        )
+                        .await;
                     if result.is_ok() {
-                        if let Ok(prs) = self.daemon.list_prs(path).await { self.state.prs = prs; }
+                        if let Ok(prs) = self.daemon.list_prs(path).await {
+                            self.state.prs = prs;
+                        }
                         self.state.clear_form();
                         self.go_back();
                     }
@@ -452,7 +541,9 @@ impl App {
             }
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char(c) => self.state.form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
+            KeyCode::Char(c) => self
+                .state
+                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
             KeyCode::Backspace => self.state.form_backspace(),
             _ => {}
         }
@@ -462,12 +553,20 @@ impl App {
     /// Handle keys in Docs view
     async fn handle_docs_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => self.state.move_selection_down(self.state.docs.len()),
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.state.move_selection_down(self.state.docs.len())
+            }
             KeyCode::Char('k') | KeyCode::Up => self.state.move_selection_up(),
             KeyCode::Enter => {
                 if let Some(doc) = self.state.docs.get(self.state.selected_index) {
                     self.state.selected_doc_slug = Some(doc.slug.clone());
-                    self.navigate(View::DocDetail, ViewParams { doc_slug: Some(doc.slug.clone()), ..Default::default() });
+                    self.navigate(
+                        View::DocDetail,
+                        ViewParams {
+                            doc_slug: Some(doc.slug.clone()),
+                            ..Default::default()
+                        },
+                    );
                 }
             }
             KeyCode::Char('n') => self.navigate(View::DocCreate, ViewParams::default()),
@@ -493,13 +592,30 @@ impl App {
     /// Handle keys in Doc Create view
     async fn handle_doc_create_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Esc => { self.state.clear_form(); self.go_back(); }
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let Some(path) = &self.state.selected_project_path {
-                    let slug = if self.state.form_slug.is_empty() { None } else { Some(self.state.form_slug.as_str()) };
-                    let result = self.daemon.create_doc(path, &self.state.form_title, &self.state.form_description, slug).await;
+                    let slug = if self.state.form_slug.is_empty() {
+                        None
+                    } else {
+                        Some(self.state.form_slug.as_str())
+                    };
+                    let result = self
+                        .daemon
+                        .create_doc(
+                            path,
+                            &self.state.form_title,
+                            &self.state.form_description,
+                            slug,
+                        )
+                        .await;
                     if result.is_ok() {
-                        if let Ok(docs) = self.daemon.list_docs(path).await { self.state.docs = docs; }
+                        if let Ok(docs) = self.daemon.list_docs(path).await {
+                            self.state.docs = docs;
+                        }
                         self.state.clear_form();
                         self.go_back();
                     }
@@ -507,9 +623,15 @@ impl App {
             }
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char(c) => self.state.form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
+            KeyCode::Char(c) => self
+                .state
+                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
             KeyCode::Backspace => self.state.form_backspace(),
-            KeyCode::Enter => { if self.state.active_form_field == 1 { self.state.form_description.push('\n'); } }
+            KeyCode::Enter => {
+                if self.state.active_form_field == 1 {
+                    self.state.form_description.push('\n');
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -528,21 +650,34 @@ impl App {
 
     /// Handle keys in Splash screen
     async fn handle_splash_key(&mut self, _key: KeyEvent) -> Result<()> {
-        if let Some(ref mut splash) = self.splash_state { splash.skip(); }
+        if let Some(ref mut splash) = self.splash_state {
+            splash.skip();
+        }
         Ok(())
     }
 
     /// Handle mouse events
     pub async fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         self.copy_message = None;
-        if self.state.current_view != View::Splash && self.handle_sidebar_mouse(mouse).await? { return Ok(()); }
+        if self.state.current_view != View::Splash && self.handle_sidebar_mouse(mouse).await? {
+            return Ok(());
+        }
         match self.state.current_view {
             View::Splash => self.handle_splash_mouse(mouse).await?,
-            View::Projects => { let len = self.state.sorted_projects().len(); self.handle_list_mouse(mouse, len).await? }
-            View::Issues => { let len = self.state.sorted_issues().len(); self.handle_list_mouse(mouse, len).await? }
+            View::Projects => {
+                let len = self.state.sorted_projects().len();
+                self.handle_list_mouse(mouse, len).await?
+            }
+            View::Issues => {
+                let len = self.state.sorted_issues().len();
+                self.handle_list_mouse(mouse, len).await?
+            }
             View::IssueDetail => self.handle_scroll_mouse(mouse).await?,
             View::IssueCreate | View::IssueEdit => self.handle_form_mouse(mouse).await?,
-            View::Prs => { let len = self.state.sorted_prs().len(); self.handle_list_mouse(mouse, len).await? }
+            View::Prs => {
+                let len = self.state.sorted_prs().len();
+                self.handle_list_mouse(mouse, len).await?
+            }
             View::PrDetail => self.handle_scroll_mouse(mouse).await?,
             View::PrCreate | View::PrEdit => self.handle_form_mouse(mouse).await?,
             View::Docs => self.handle_list_mouse(mouse, self.state.docs.len()).await?,
@@ -561,11 +696,31 @@ impl App {
                 let item_index = (mouse.row - SIDEBAR_ITEMS_START_Y) as usize;
                 let has_project = self.state.selected_project_path.is_some();
                 match item_index {
-                    0 => { self.state.sidebar_index = 0; self.navigate(View::Projects, ViewParams::default()); return Ok(true); }
-                    1 if has_project => { self.state.sidebar_index = 1; self.navigate(View::Issues, ViewParams::default()); return Ok(true); }
-                    2 if has_project => { self.state.sidebar_index = 2; self.navigate(View::Prs, ViewParams::default()); return Ok(true); }
-                    3 if has_project => { self.state.sidebar_index = 3; self.navigate(View::Docs, ViewParams::default()); return Ok(true); }
-                    4 if has_project => { self.state.sidebar_index = 4; self.navigate(View::Config, ViewParams::default()); return Ok(true); }
+                    0 => {
+                        self.state.sidebar_index = 0;
+                        self.navigate(View::Projects, ViewParams::default());
+                        return Ok(true);
+                    }
+                    1 if has_project => {
+                        self.state.sidebar_index = 1;
+                        self.navigate(View::Issues, ViewParams::default());
+                        return Ok(true);
+                    }
+                    2 if has_project => {
+                        self.state.sidebar_index = 2;
+                        self.navigate(View::Prs, ViewParams::default());
+                        return Ok(true);
+                    }
+                    3 if has_project => {
+                        self.state.sidebar_index = 3;
+                        self.navigate(View::Docs, ViewParams::default());
+                        return Ok(true);
+                    }
+                    4 if has_project => {
+                        self.state.sidebar_index = 4;
+                        self.navigate(View::Config, ViewParams::default());
+                        return Ok(true);
+                    }
                     _ => {}
                 }
             }
@@ -582,7 +737,9 @@ impl App {
             MouseEventKind::Down(MouseButton::Left) => {
                 if mouse.column >= MAIN_AREA_START_X && mouse.row >= LIST_ITEMS_START_Y {
                     let clicked_index = (mouse.row - LIST_ITEMS_START_Y) as usize;
-                    if clicked_index < list_len { self.state.selected_index = clicked_index; }
+                    if clicked_index < list_len {
+                        self.state.selected_index = clicked_index;
+                    }
                 }
             }
             _ => {}
@@ -607,7 +764,9 @@ impl App {
             if mouse.column >= MAIN_AREA_START_X && mouse.row >= FORM_START_Y {
                 let field_index = ((mouse.row - FORM_START_Y) / FIELD_HEIGHT) as usize;
                 let max_fields = self.state.form_field_count();
-                if field_index < max_fields { self.state.active_form_field = field_index; }
+                if field_index < max_fields {
+                    self.state.active_form_field = field_index;
+                }
             }
         }
         match mouse.kind {
@@ -620,13 +779,18 @@ impl App {
 
     async fn handle_splash_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            if let Some(ref mut splash) = self.splash_state { splash.skip(); }
+            if let Some(ref mut splash) = self.splash_state {
+                splash.skip();
+            }
         }
         Ok(())
     }
 
     fn get_current_issue(&self) -> Option<&crate::state::Issue> {
-        self.state.selected_issue_id.as_ref().and_then(|id| self.state.issues.iter().find(|i| &i.id == id))
+        self.state
+            .selected_issue_id
+            .as_ref()
+            .and_then(|id| self.state.issues.iter().find(|i| &i.id == id))
     }
 
     fn copy_to_clipboard(&self, text: &str) -> Result<()> {
