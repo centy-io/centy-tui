@@ -7,6 +7,8 @@ use std::collections::HashMap;
 /// Current view in the application
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum View {
+    /// Splash screen with logo animation
+    Splash,
     #[default]
     Projects,
     Issues,

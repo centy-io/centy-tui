@@ -65,16 +65,34 @@ async fn run_app<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
+        // Get terminal size for animation calculations
+        let terminal_height = terminal.size()?.height;
+
+        // Update splash animation if active
+        let in_splash = app.in_splash();
+        if in_splash {
+            app.update_splash(terminal_height);
+        }
+
         // Draw the UI
         terminal.draw(|frame| ui::draw(frame, app))?;
 
+        // Use faster polling during animation (16ms = ~60fps)
+        // Normal polling (100ms) otherwise
+        let poll_duration = if in_splash {
+            std::time::Duration::from_millis(16)
+        } else {
+            std::time::Duration::from_millis(100)
+        };
+
         // Handle events
-        if event::poll(std::time::Duration::from_millis(100))? {
+        if event::poll(poll_duration)? {
             if let Event::Key(key) = event::read()? {
-                // Global quit: q or Ctrl+C
-                if key.code == KeyCode::Char('q')
-                    || (key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL))
+                // Global quit: q or Ctrl+C (but not during splash)
+                if !in_splash
+                    && (key.code == KeyCode::Char('q')
+                        || (key.code == KeyCode::Char('c')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)))
                 {
                     return Ok(());
                 }

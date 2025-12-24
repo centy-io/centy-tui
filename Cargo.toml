@@ -44,6 +44,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # Clipboard
 arboard = "3"
 
+# Animation
+simple-easing = "1.0"
+
 [build-dependencies]
 tonic-build = "0.12"
 

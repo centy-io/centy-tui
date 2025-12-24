@@ -1,7 +1,7 @@
 //! Application state and core logic
 
 use crate::daemon::DaemonClient;
-use crate::state::{AppState, View, ViewParams};
+use crate::state::{AppState, LogoStyle, SplashState, View, ViewParams};
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -17,6 +17,8 @@ pub struct App {
     pub status_message: Option<String>,
     /// Copy feedback message
     pub copy_message: Option<String>,
+    /// Splash screen animation state
+    pub splash_state: Option<SplashState>,
 }
 
 impl App {
@@ -25,6 +27,9 @@ impl App {
     pub async fn new() -> Result<Self> {
         let daemon = DaemonClient::new().await?;
         let mut state = AppState::default();
+
+        // Start with splash screen
+        state.current_view = View::Splash;
 
         // Check daemon connection
         state.daemon_connected = daemon.check_connection().await;
@@ -42,7 +47,27 @@ impl App {
             quit: false,
             status_message: None,
             copy_message: None,
+            splash_state: Some(SplashState::new(LogoStyle::default())),
         })
+    }
+
+    /// Update splash animation state
+    /// Returns true if animation is complete and we should transition
+    pub fn update_splash(&mut self, terminal_height: u16) -> bool {
+        if let Some(ref mut splash) = self.splash_state {
+            splash.update(terminal_height);
+            if splash.is_complete() {
+                self.splash_state = None;
+                self.state.current_view = View::Projects;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if in splash screen
+    pub fn in_splash(&self) -> bool {
+        matches!(self.state.current_view, View::Splash)
     }
 
     /// Check if app should quit
@@ -56,6 +81,7 @@ impl App {
         self.copy_message = None;
 
         match self.state.current_view {
+            View::Splash => self.handle_splash_key(key).await?,
             View::Projects => self.handle_projects_key(key).await?,
             View::Issues => self.handle_issues_key(key).await?,
             View::IssueDetail => self.handle_issue_detail_key(key).await?,
@@ -711,6 +737,14 @@ impl App {
                 self.go_back();
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in Splash screen - any key skips the animation
+    async fn handle_splash_key(&mut self, _key: KeyEvent) -> Result<()> {
+        if let Some(ref mut splash) = self.splash_state {
+            splash.skip();
         }
         Ok(())
     }

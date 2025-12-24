@@ -8,6 +8,7 @@ mod issues;
 mod layout;
 mod projects;
 mod prs;
+mod splash;
 
 use crate::app::App;
 use crate::state::View;
@@ -17,6 +18,14 @@ use ratatui::Frame;
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
 
+    // Splash screen takes full screen (no sidebar or status bar)
+    if let View::Splash = &app.state.current_view {
+        if let Some(ref splash_state) = app.splash_state {
+            splash::draw(frame, area, splash_state);
+        }
+        return;
+    }
+
     // Draw the main layout with sidebar
     let (sidebar_area, main_area) = layout::create_layout(area);
 
@@ -25,6 +34,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     // Draw main content based on current view
     match &app.state.current_view {
+        View::Splash => {} // Handled above
         View::Projects => projects::draw(frame, main_area, app),
         View::Issues => issues::draw_list(frame, main_area, app),
         View::IssueDetail => issues::draw_detail(frame, main_area, app),

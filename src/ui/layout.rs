@@ -178,6 +178,7 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
 /// Get keyboard hints for the current view
 fn get_view_hints(view: &View) -> &'static str {
     match view {
+        View::Splash => "Press any key to skip",
         View::Projects => "j/k:nav  Enter:select  f:fav  a:archive  x:untrack  n:new",
         View::Issues => "j/k:nav  Enter:view  n:new  s/S:sort  a:all  y:copy",
         View::IssueDetail => "e:edit  j/k:scroll  d/u:page  y:copy  Esc:back",
