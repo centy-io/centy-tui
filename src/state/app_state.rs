@@ -451,7 +451,7 @@ impl AppState {
     }
 
     /// Get number of form fields for current view
-    fn form_field_count(&self) -> usize {
+    pub fn form_field_count(&self) -> usize {
         match self.current_view {
             View::IssueCreate => 3, // title, description, priority
             View::IssueEdit => 4,   // title, description, priority, status

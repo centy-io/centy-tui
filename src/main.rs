@@ -12,13 +12,13 @@ mod ui;
 use anyhow::Result;
 use app::App;
 use cockpit::PaneEvent;
-use state::View;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
+use state::View;
 use std::io;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -115,6 +115,9 @@ async fn run_app<B: ratatui::backend::Backend>(
 
                     // Handle key event
                     app.handle_key(key).await?;
+                }
+                Event::Mouse(mouse) => {
+                    app.handle_mouse(mouse).await?;
                 }
                 Event::Resize(_width, _height) => {
                     // Terminal was resized - panes will be recalculated on next draw
