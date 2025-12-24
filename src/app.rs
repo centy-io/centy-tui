@@ -871,7 +871,7 @@ impl App {
     /// Handle mouse events in list views (Issues, PRs, Docs)
     async fn handle_list_mouse(&mut self, mouse: MouseEvent, list_len: usize) -> Result<()> {
         let main_area_start_x = self.sidebar_width();
-        const LIST_ITEMS_START_Y: u16 = 1;
+        const LIST_ITEMS_START_Y: u16 = 3;
         match mouse.kind {
             MouseEventKind::ScrollUp => self.state.move_selection_up(),
             MouseEventKind::ScrollDown => self.state.move_selection_down(list_len),
