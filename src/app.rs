@@ -2,7 +2,8 @@
 
 use crate::daemon::DaemonClient;
 use crate::state::{
-    AppState, IssueDetailFocus, LlmAction, LogoStyle, SplashState, View, ViewParams,
+    AppState, IssueDetailFocus, LlmAction, LogoStyle, ScreenBuffer, ScreenPos, SplashState, View,
+    ViewParams,
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -24,6 +25,8 @@ pub struct App {
     pub splash_state: Option<SplashState>,
     /// Terminal size for grid calculations (height, width)
     pub terminal_size: Option<(u16, u16)>,
+    /// Screen buffer for text selection
+    pub screen_buffer: ScreenBuffer,
 }
 
 impl App {
@@ -54,6 +57,7 @@ impl App {
             copy_message: None,
             splash_state: Some(SplashState::new(LogoStyle::default())),
             terminal_size: None,
+            screen_buffer: ScreenBuffer::default(),
         })
     }
 
@@ -116,6 +120,22 @@ impl App {
         // Clear any status messages on key press
         self.copy_message = None;
 
+        // Handle keyboard text selection (Shift+arrows)
+        if key.modifiers.contains(KeyModifiers::SHIFT) {
+            match key.code {
+                KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {
+                    self.handle_selection_key(key)?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        // Clear selection on Escape
+        if key.code == KeyCode::Esc {
+            self.state.selection.clear();
+        }
+
         match self.state.current_view {
             View::Splash => self.handle_splash_key(key).await?,
             View::Projects => self.handle_projects_key(key).await?,
@@ -138,6 +158,8 @@ impl App {
 
     /// Navigate to a new view
     pub fn navigate(&mut self, view: View, params: ViewParams) {
+        // Clear selection on view change
+        self.state.selection.clear();
         // Save current view to history
         self.state.view_history.push((
             self.state.current_view.clone(),
@@ -149,6 +171,8 @@ impl App {
 
     /// Go back to previous view
     pub fn go_back(&mut self) {
+        // Clear selection on view change
+        self.state.selection.clear();
         if let Some((view, params)) = self.state.view_history.pop() {
             self.state.current_view = view;
             self.state.view_params = params;
@@ -305,20 +329,6 @@ impl App {
                 self.state.show_closed_issues = !self.state.show_closed_issues;
                 self.state.reset_selection();
             }
-            KeyCode::Char('y') => {
-                let sorted = self.state.sorted_issues();
-                if let Some(issue) = sorted.get(self.state.selected_index) {
-                    self.copy_to_clipboard(&format!("#{} {}", issue.display_number, issue.title))?;
-                    self.copy_message = Some("Copied title".to_string());
-                }
-            }
-            KeyCode::Char('Y') => {
-                let sorted = self.state.sorted_issues();
-                if let Some(issue) = sorted.get(self.state.selected_index) {
-                    self.copy_to_clipboard(&issue.id)?;
-                    self.copy_message = Some("Copied UUID".to_string());
-                }
-            }
             KeyCode::Esc | KeyCode::Backspace => {
                 self.go_back();
             }
@@ -388,19 +398,6 @@ impl App {
             KeyCode::Enter => {
                 if matches!(self.state.issue_detail_focus, IssueDetailFocus::ActionPanel) {
                     self.execute_action_panel_selection().await?;
-                }
-            }
-            // Copy shortcuts
-            KeyCode::Char('y') => {
-                if let Some(issue) = self.get_current_issue() {
-                    self.copy_to_clipboard(&format!("#{} {}", issue.display_number, issue.title))?;
-                    self.copy_message = Some("Copied title".to_string());
-                }
-            }
-            KeyCode::Char('Y') => {
-                if let Some(issue) = self.get_current_issue() {
-                    self.copy_to_clipboard(&issue.id)?;
-                    self.copy_message = Some("Copied UUID".to_string());
                 }
             }
             // Go back (also reset focus and action panel index)
@@ -902,6 +899,47 @@ impl App {
     /// Handle mouse events
     pub async fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         self.copy_message = None;
+
+        // Handle text selection (drag and release)
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Start a new selection on mouse down
+                // Check if Shift is held to extend selection
+                if mouse.modifiers.contains(KeyModifiers::SHIFT) {
+                    if self.state.selection.anchor.is_some() {
+                        self.state
+                            .selection
+                            .update(ScreenPos::new(mouse.column, mouse.row));
+                    } else {
+                        self.state
+                            .selection
+                            .start(ScreenPos::new(mouse.column, mouse.row));
+                    }
+                } else {
+                    self.state
+                        .selection
+                        .start(ScreenPos::new(mouse.column, mouse.row));
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                // Update selection endpoint during drag
+                if self.state.selection.is_selecting {
+                    self.state
+                        .selection
+                        .update(ScreenPos::new(mouse.column, mouse.row));
+                }
+                // Don't process normal UI events during drag - just update selection
+                return Ok(());
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                // Finish selection on mouse up
+                if self.state.selection.is_selecting {
+                    self.state.selection.finish();
+                }
+            }
+            _ => {}
+        }
+
         // Only check sidebar mouse if sidebar is visible (project selected)
         let has_project = self.state.selected_project_path.is_some();
         if has_project
@@ -1205,6 +1243,7 @@ impl App {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn get_current_issue(&self) -> Option<&crate::state::Issue> {
         self.state
             .selected_issue_id
@@ -1216,6 +1255,51 @@ impl App {
         use arboard::Clipboard;
         let mut clipboard = Clipboard::new()?;
         clipboard.set_text(text)?;
+        Ok(())
+    }
+
+    /// Handle keyboard text selection (Shift+arrows)
+    fn handle_selection_key(&mut self, key: KeyEvent) -> Result<()> {
+        let selection = &mut self.state.selection;
+
+        // Initialize keyboard cursor if not set
+        if selection.keyboard_cursor.is_none() {
+            // Start from center of screen
+            let (height, width) = self.terminal_size.unwrap_or((24, 80));
+            let cursor = ScreenPos::new(width / 2, height / 2);
+            selection.keyboard_cursor = Some(cursor);
+            selection.start(cursor);
+            selection.keyboard_mode = true;
+        }
+
+        let current = selection.keyboard_cursor.unwrap();
+        let (max_row, max_col) = self.terminal_size.unwrap_or((24, 80));
+
+        let new_pos = match key.code {
+            KeyCode::Left => ScreenPos::new(current.col.saturating_sub(1), current.row),
+            KeyCode::Right => ScreenPos::new((current.col + 1).min(max_col.saturating_sub(1)), current.row),
+            KeyCode::Up => ScreenPos::new(current.col, current.row.saturating_sub(1)),
+            KeyCode::Down => ScreenPos::new(current.col, (current.row + 1).min(max_row.saturating_sub(1))),
+            _ => current,
+        };
+
+        selection.keyboard_cursor = Some(new_pos);
+        selection.update(new_pos);
+        selection.keyboard_mode = true;
+
+        Ok(())
+    }
+
+    /// Copy current text selection to clipboard
+    pub fn copy_selection(&mut self) -> Result<()> {
+        if let Some((start, end)) = self.state.selection.get_range() {
+            let text = self.screen_buffer.extract_text(start, end);
+            if !text.is_empty() {
+                self.copy_to_clipboard(&text)?;
+                self.copy_message = Some(format!("Copied {} chars", text.len()));
+            }
+            self.state.selection.clear();
+        }
         Ok(())
     }
 }

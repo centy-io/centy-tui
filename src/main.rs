@@ -82,6 +82,9 @@ async fn run_app<B: ratatui::backend::Backend>(
         // Draw the UI
         terminal.draw(|frame| ui::draw(frame, app))?;
 
+        // Clear selection on resize (positions are no longer valid)
+        // This is handled in the Resize event below
+
         // Use faster polling during animation (16ms = ~60fps), normal polling (100ms) otherwise
         let poll_duration = if in_splash {
             std::time::Duration::from_millis(16)
@@ -93,12 +96,18 @@ async fn run_app<B: ratatui::backend::Backend>(
         if event::poll(poll_duration)? {
             match event::read()? {
                 Event::Key(key) => {
-                    // Global quit: Ctrl+C (but not during splash)
-                    if !in_splash
-                        && key.code == KeyCode::Char('c')
+                    // Global Ctrl+C: copy selection if exists, otherwise quit (but not during splash)
+                    if key.code == KeyCode::Char('c')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
-                        return Ok(());
+                        if app.state.selection.has_selection() {
+                            if let Err(e) = app.copy_selection() {
+                                app.status_message = Some(format!("Copy failed: {}", e));
+                            }
+                        } else if !in_splash {
+                            return Ok(());
+                        }
+                        continue;
                     }
 
                     // Handle key event
@@ -110,6 +119,8 @@ async fn run_app<B: ratatui::backend::Backend>(
                 Event::Resize(width, height) => {
                     // Update terminal size for grid calculations and pane recalculation
                     app.terminal_size = Some((height, width));
+                    // Clear selection on resize (positions are no longer valid)
+                    app.state.selection.clear();
                 }
                 _ => {}
             }
