@@ -1,6 +1,7 @@
 //! Pull Request list and detail views
 
 use crate::app::App;
+use super::render_scrollable_list;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -147,7 +148,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(Color::Cyan)),
     );
 
-    frame.render_widget(list, chunks[1]);
+    render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
 }
 
 /// Draw PR detail view

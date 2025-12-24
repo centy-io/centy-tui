@@ -2,6 +2,7 @@
 
 use crate::app::App;
 use crate::state::{IssueDetailFocus, IssuesListFocus};
+use super::render_scrollable_list;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -147,7 +148,7 @@ fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(border_color)),
     );
 
-    frame.render_widget(list, chunks[1]);
+    render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
 }
 
 /// Draw the issues list action panel (right side)

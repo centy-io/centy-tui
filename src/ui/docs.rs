@@ -1,6 +1,7 @@
 //! Documentation list and detail views
 
 use crate::app::App;
+use super::render_scrollable_list;
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -63,7 +64,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(Color::Cyan)),
     );
 
-    frame.render_widget(list, area);
+    render_scrollable_list(frame, area, list, app.state.selected_index);
 }
 
 /// Draw doc detail view

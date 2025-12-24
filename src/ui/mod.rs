@@ -8,6 +8,9 @@ mod layout;
 mod projects;
 mod prs;
 mod splash;
+mod widgets;
+
+pub use widgets::render_scrollable_list;
 
 use crate::app::App;
 use crate::state::View;
