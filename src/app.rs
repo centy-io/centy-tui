@@ -187,6 +187,9 @@ impl App {
                     if let Ok(issues) = self.daemon.list_issues(&path).await {
                         self.state.issues = issues;
                     }
+                    if let Ok(config) = self.daemon.get_config(&path).await {
+                        self.state.config = Some(config);
+                    }
                     self.navigate(View::Issues, ViewParams::default());
                 }
             }
@@ -326,6 +329,15 @@ impl App {
 
     /// Handle keys in Issue Detail view
     async fn handle_issue_detail_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Calculate total items in action panel
+        let state_count = self
+            .state
+            .config
+            .as_ref()
+            .map(|c| c.allowed_states.len())
+            .unwrap_or(0);
+        let total_items = 3 + state_count; // VSCode, Plan, Impl + states
+
         match key.code {
             // Tab: Switch focus between content and action panel
             KeyCode::Tab => {
@@ -343,15 +355,23 @@ impl App {
                     );
                 }
             }
-            // Scroll (only when content is focused)
+            // Navigation (j/k/Up/Down)
             KeyCode::Char('j') | KeyCode::Down => {
                 if matches!(self.state.issue_detail_focus, IssueDetailFocus::Content) {
                     self.state.scroll_down();
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_index =
+                        (self.state.action_panel_index + 1) % total_items;
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 if matches!(self.state.issue_detail_focus, IssueDetailFocus::Content) {
                     self.state.scroll_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_index =
+                        (self.state.action_panel_index + total_items - 1) % total_items;
                 }
             }
             KeyCode::Char('d') | KeyCode::PageDown => {
@@ -364,17 +384,10 @@ impl App {
                     self.state.scroll_up_page();
                 }
             }
-            // Toggle LLM action mode (Plan/Implement)
-            KeyCode::Char('p') => {
-                self.state.action_panel_llm_action = LlmAction::Plan;
-            }
-            KeyCode::Char('i') => {
-                self.state.action_panel_llm_action = LlmAction::Implement;
-            }
             // Execute action (Enter when action panel is focused)
             KeyCode::Enter => {
                 if matches!(self.state.issue_detail_focus, IssueDetailFocus::ActionPanel) {
-                    self.execute_open_in_vscode().await?;
+                    self.execute_action_panel_selection().await?;
                 }
             }
             // Copy shortcuts
@@ -390,13 +403,105 @@ impl App {
                     self.copy_message = Some("Copied UUID".to_string());
                 }
             }
-            // Go back (also reset focus)
+            // Go back (also reset focus and action panel index)
             KeyCode::Esc | KeyCode::Backspace => {
                 self.state.issue_detail_focus = IssueDetailFocus::Content;
+                self.state.action_panel_index = 0;
                 self.go_back();
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    /// Execute action based on current action panel selection
+    async fn execute_action_panel_selection(&mut self) -> Result<()> {
+        let index = self.state.action_panel_index;
+
+        match index {
+            0 => {
+                // Open in VSCode
+                self.execute_open_in_vscode().await?;
+            }
+            1 => {
+                // Set Plan mode
+                self.state.action_panel_llm_action = LlmAction::Plan;
+                self.status_message = Some("Mode set to Plan".to_string());
+            }
+            2 => {
+                // Set Implement mode
+                self.state.action_panel_llm_action = LlmAction::Implement;
+                self.status_message = Some("Mode set to Implement".to_string());
+            }
+            _ => {
+                // State selection (index 3+)
+                let state_index = index - 3;
+                if let Some(config) = &self.state.config {
+                    if let Some(new_status) = config.allowed_states.get(state_index) {
+                        self.update_issue_status(new_status.clone()).await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Update the current issue's status
+    async fn update_issue_status(&mut self, new_status: String) -> Result<()> {
+        let project_path = match &self.state.selected_project_path {
+            Some(path) => path.clone(),
+            None => {
+                self.status_message = Some("No project selected".to_string());
+                return Ok(());
+            }
+        };
+
+        let issue_id = match &self.state.selected_issue_id {
+            Some(id) => id.clone(),
+            None => {
+                self.status_message = Some("No issue selected".to_string());
+                return Ok(());
+            }
+        };
+
+        // Get current issue data
+        let (title, description, priority) = {
+            let issue = self.state.issues.iter().find(|i| i.id == issue_id);
+            match issue {
+                Some(i) => (i.title.clone(), i.description.clone(), i.metadata.priority),
+                None => {
+                    self.status_message = Some("Issue not found".to_string());
+                    return Ok(());
+                }
+            }
+        };
+
+        // Update the issue
+        match self
+            .daemon
+            .update_issue(
+                &project_path,
+                &issue_id,
+                &title,
+                &description,
+                priority,
+                &new_status,
+            )
+            .await
+        {
+            Ok(_) => {
+                // Refresh issues list
+                if let Ok(issues) = self.daemon.list_issues(&project_path).await {
+                    self.state.issues = issues;
+                }
+                self.status_message = Some(format!("Status updated to '{}'", new_status));
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Failed to update status: {}", e));
+            }
+        }
+
         Ok(())
     }
 
@@ -958,6 +1063,9 @@ impl App {
                                     self.state.selected_project_path = Some(path.clone());
                                     if let Ok(issues) = self.daemon.list_issues(&path).await {
                                         self.state.issues = issues;
+                                    }
+                                    if let Ok(config) = self.daemon.get_config(&path).await {
+                                        self.state.config = Some(config);
                                     }
                                     self.navigate(View::Issues, ViewParams::default());
                                 }
