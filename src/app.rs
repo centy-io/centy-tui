@@ -150,6 +150,10 @@ impl App {
     /// Go back to previous view
     pub fn go_back(&mut self) {
         if let Some((view, params)) = self.state.view_history.pop() {
+            // Clear selected project when returning to Projects view
+            if matches!(view, View::Projects) {
+                self.state.selected_project_path = None;
+            }
             self.state.current_view = view;
             self.state.view_params = params;
         }
