@@ -125,6 +125,54 @@ impl SortDirection {
     }
 }
 
+/// Focus state for issue detail view (content vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IssueDetailFocus {
+    #[default]
+    Content,
+    ActionPanel,
+}
+
+impl IssueDetailFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Content => Self::ActionPanel,
+            Self::ActionPanel => Self::Content,
+        };
+    }
+}
+
+/// LLM action type for agent operations (mirrors proto LlmAction)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LlmAction {
+    #[default]
+    Plan,
+    Implement,
+}
+
+impl LlmAction {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Plan => Self::Implement,
+            Self::Implement => Self::Plan,
+        };
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Plan => "Plan",
+            Self::Implement => "Implement",
+        }
+    }
+
+    pub fn to_proto_value(&self) -> i32 {
+        match self {
+            Self::Plan => 1,
+            Self::Implement => 2,
+        }
+    }
+}
+
 /// Project information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -300,6 +348,10 @@ pub struct AppState {
     pub scroll_offset: usize,
     pub daemon_connected: bool,
     pub confirm_action: Option<String>,
+
+    // Issue detail action panel state
+    pub issue_detail_focus: IssueDetailFocus,
+    pub action_panel_llm_action: LlmAction,
 
     // Double-click detection for project grid
     pub last_click_time: Option<Instant>,

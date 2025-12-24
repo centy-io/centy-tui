@@ -170,7 +170,9 @@ fn draw_project_card(frame: &mut Frame, area: Rect, project: &Project, is_select
     // Line 1: Favorite star + Project name (truncated if needed)
     let name = project.display_name();
     let favorite_prefix = if project.is_favorite { "★ " } else { "" };
-    let max_name_len = inner.width.saturating_sub(favorite_prefix.chars().count() as u16) as usize;
+    let max_name_len = inner
+        .width
+        .saturating_sub(favorite_prefix.chars().count() as u16) as usize;
     let truncated_name = if name.len() > max_name_len && max_name_len > 3 {
         format!("{}...", &name[..max_name_len.saturating_sub(3)])
     } else if name.len() > max_name_len {

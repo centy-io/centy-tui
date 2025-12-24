@@ -28,6 +28,16 @@ pub struct DaemonClient {
     address: String,
 }
 
+/// Result from opening a project in a temporary VS Code workspace
+#[derive(Debug, Clone)]
+pub struct OpenInVscodeResult {
+    pub workspace_path: String,
+    pub issue_id: String,
+    pub display_number: u32,
+    pub expires_at: String,
+    pub vscode_opened: bool,
+}
+
 impl DaemonClient {
     /// Create a new daemon client
     pub async fn new() -> Result<Self> {
@@ -525,6 +535,44 @@ impl DaemonClient {
         }
 
         Ok(inner.slug)
+    }
+
+    /// Open a project in a temporary VS Code workspace
+    pub async fn open_in_temp_vscode(
+        &mut self,
+        project_path: &str,
+        issue_id: &str,
+        action: i32,
+        agent_name: &str,
+        ttl_hours: u32,
+    ) -> Result<OpenInVscodeResult> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::OpenInTempVscodeRequest {
+            project_path: project_path.to_string(),
+            issue_id: issue_id.to_string(),
+            action,
+            agent_name: agent_name.to_string(),
+            ttl_hours,
+        });
+
+        let response = client
+            .open_in_temp_vscode(request)
+            .await
+            .map_err(|e| anyhow!("Failed to open in temp VSCode: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to open in temp VSCode: {}", inner.error));
+        }
+
+        Ok(OpenInVscodeResult {
+            workspace_path: inner.workspace_path,
+            issue_id: inner.issue_id,
+            display_number: inner.display_number,
+            expires_at: inner.expires_at,
+            vscode_opened: inner.vscode_opened,
+        })
     }
 
     /// Restart the daemon

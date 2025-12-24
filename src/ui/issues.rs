@@ -1,6 +1,7 @@
 //! Issues list and detail views
 
 use crate::app::App;
+use crate::state::IssueDetailFocus;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

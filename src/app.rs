@@ -92,10 +92,7 @@ impl App {
     pub fn calculate_project_grid_columns(&self) -> usize {
         // Use stored terminal size or default
         // terminal_size is (height, width)
-        let width = self
-            .terminal_size
-            .map(|(_, w)| w)
-            .unwrap_or(80);
+        let width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
 
         // Subtract sidebar width (dynamic) and outer borders (2)
         let sidebar_width = self.sidebar_width();
@@ -709,14 +706,15 @@ impl App {
         self.copy_message = None;
         // Only check sidebar mouse if sidebar is visible (project selected)
         let has_project = self.state.selected_project_path.is_some();
-        if has_project && self.state.current_view != View::Splash && self.handle_sidebar_mouse(mouse).await? {
+        if has_project
+            && self.state.current_view != View::Splash
+            && self.handle_sidebar_mouse(mouse).await?
+        {
             return Ok(());
         }
         match self.state.current_view {
             View::Splash => self.handle_splash_mouse(mouse).await?,
-            View::Projects => {
-                self.handle_projects_grid_mouse(mouse).await?
-            }
+            View::Projects => self.handle_projects_grid_mouse(mouse).await?,
             View::Issues => {
                 let len = self.state.sorted_issues().len();
                 self.handle_list_mouse(mouse, len).await?
