@@ -107,9 +107,7 @@ impl App {
         self.copy_message = None;
 
         // Handle sidebar clicks first (always active except splash)
-        if self.state.current_view != View::Splash
-            && self.handle_sidebar_mouse(mouse).await?
-        {
+        if self.state.current_view != View::Splash && self.handle_sidebar_mouse(mouse).await? {
             return Ok(());
         }
 
@@ -132,10 +130,7 @@ impl App {
             }
             View::PrDetail => self.handle_scroll_mouse(mouse).await?,
             View::PrCreate | View::PrEdit => self.handle_form_mouse(mouse).await?,
-            View::Docs => {
-                self.handle_list_mouse(mouse, self.state.docs.len())
-                    .await?
-            }
+            View::Docs => self.handle_list_mouse(mouse, self.state.docs.len()).await?,
             View::DocDetail => self.handle_scroll_mouse(mouse).await?,
             View::DocCreate => self.handle_form_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
