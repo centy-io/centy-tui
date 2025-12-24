@@ -131,13 +131,16 @@ impl App {
     async fn handle_projects_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down(self.state.sorted_projects().len());
+                self.state
+                    .move_selection_down(self.state.sorted_projects().len());
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.move_selection_up();
             }
             KeyCode::Enter => {
-                let project_path = self.state.sorted_projects()
+                let project_path = self
+                    .state
+                    .sorted_projects()
                     .get(self.state.selected_index)
                     .map(|p| p.path.clone());
                 if let Some(path) = project_path {
@@ -151,7 +154,9 @@ impl App {
             }
             KeyCode::Char('f') => {
                 // Toggle favorite - get path from sorted list, then find in mutable list
-                let project_path = self.state.sorted_projects()
+                let project_path = self
+                    .state
+                    .sorted_projects()
                     .get(self.state.selected_index)
                     .map(|p| p.path.clone());
                 if let Some(path) = project_path {
@@ -171,16 +176,13 @@ impl App {
             }
             KeyCode::Char('a') => {
                 // Archive project
-                let project_path = self.state.sorted_projects()
+                let project_path = self
+                    .state
+                    .sorted_projects()
                     .get(self.state.selected_index)
                     .map(|p| p.path.clone());
                 if let Some(path) = project_path {
-                    if self
-                        .daemon
-                        .set_project_archived(&path, true)
-                        .await
-                        .is_ok()
-                    {
+                    if self.daemon.set_project_archived(&path, true).await.is_ok() {
                         // Reload projects
                         if let Ok(projects) = self.daemon.list_projects().await {
                             self.state.projects = projects;
@@ -235,13 +237,16 @@ impl App {
     async fn handle_issues_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down(self.state.sorted_issues().len());
+                self.state
+                    .move_selection_down(self.state.sorted_issues().len());
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.move_selection_up();
             }
             KeyCode::Enter => {
-                let issue_id = self.state.sorted_issues()
+                let issue_id = self
+                    .state
+                    .sorted_issues()
                     .get(self.state.selected_index)
                     .map(|issue| issue.id.clone());
                 if let Some(id) = issue_id {
@@ -465,13 +470,16 @@ impl App {
     async fn handle_prs_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down(self.state.sorted_prs().len());
+                self.state
+                    .move_selection_down(self.state.sorted_prs().len());
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.move_selection_up();
             }
             KeyCode::Enter => {
-                let pr_id = self.state.sorted_prs()
+                let pr_id = self
+                    .state
+                    .sorted_prs()
                     .get(self.state.selected_index)
                     .map(|pr| pr.id.clone());
                 if let Some(id) = pr_id {

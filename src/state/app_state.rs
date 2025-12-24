@@ -280,6 +280,7 @@ pub struct AppState {
     pub prs: Vec<PullRequest>,
     pub docs: Vec<Doc>,
     pub config: Option<Config>,
+    #[allow(dead_code)]
     pub daemon_info: Option<DaemonInfo>,
 
     // Selection

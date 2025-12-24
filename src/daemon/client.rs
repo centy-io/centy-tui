@@ -528,6 +528,7 @@ impl DaemonClient {
     }
 
     /// Restart the daemon
+    #[allow(dead_code)]
     pub async fn restart(&mut self) -> Result<()> {
         let client = self.ensure_connected().await?;
 
@@ -545,6 +546,7 @@ impl DaemonClient {
     }
 
     /// Shutdown the daemon
+    #[allow(dead_code)]
     pub async fn shutdown(&mut self) -> Result<()> {
         let client = self.ensure_connected().await?;
 

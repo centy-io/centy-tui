@@ -101,7 +101,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Draw untrack confirmation dialog
 fn draw_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
-    let project = app.state.sorted_projects().get(app.state.selected_index).copied();
+    let project = app
+        .state
+        .sorted_projects()
+        .get(app.state.selected_index)
+        .copied();
     let project_name = project.map(|p| p.display_name()).unwrap_or("Unknown");
 
     let dialog_width = 50;
