@@ -1,314 +1,570 @@
 //! gRPC client for communicating with the Centy daemon
 //!
 //! This module provides a client for communicating with the Centy daemon
-//! via gRPC. For now, it uses a mock implementation that can be replaced
-//! with actual gRPC calls once the proto files are integrated.
+//! via gRPC using the generated proto types.
 
-use crate::state::{
-    Config, DaemonInfo, Doc, Issue, IssueMetadata, PrMetadata, Project, PullRequest,
-};
-use anyhow::Result;
-use chrono::Utc;
+use crate::state::{Config, DaemonInfo, Doc, Issue, IssueMetadata, PrMetadata, Project, PullRequest};
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+
+// Include the generated proto types
+pub mod proto {
+    tonic::include_proto!("centy");
+}
+
+use proto::centy_daemon_client::CentyDaemonClient;
+
+/// Default daemon address
+const DEFAULT_ADDRESS: &str = "http://127.0.0.1:50051";
 
 /// Client for communicating with the Centy daemon
 pub struct DaemonClient {
+    /// The gRPC client
+    client: Option<CentyDaemonClient<tonic::transport::Channel>>,
     /// The daemon address
-    #[allow(dead_code)]
     address: String,
-    /// Whether the client is connected
-    #[allow(dead_code)]
-    connected: bool,
 }
 
 impl DaemonClient {
     /// Create a new daemon client
     pub async fn new() -> Result<Self> {
         let address =
-            std::env::var("CENTY_DAEMON_ADDRESS").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
+            std::env::var("CENTY_DAEMON_ADDRESS").unwrap_or_else(|_| DEFAULT_ADDRESS.to_string());
 
-        Ok(Self {
-            address,
-            connected: false,
-        })
+        // Try to connect to the daemon
+        let client = match CentyDaemonClient::connect(address.clone()).await {
+            Ok(client) => Some(client),
+            Err(_) => None,
+        };
+
+        Ok(Self { client, address })
+    }
+
+    /// Ensure connection is established
+    async fn ensure_connected(&mut self) -> Result<&mut CentyDaemonClient<tonic::transport::Channel>> {
+        if self.client.is_none() {
+            self.client = Some(
+                CentyDaemonClient::connect(self.address.clone())
+                    .await
+                    .map_err(|e| anyhow!("Failed to connect to daemon: {}", e))?,
+            );
+        }
+        self.client.as_mut().ok_or_else(|| anyhow!("Client not connected"))
     }
 
     /// Check if the daemon is reachable
     pub async fn check_connection(&self) -> bool {
-        // TODO: Implement actual gRPC health check
-        // For now, return true if we can connect to the socket
-        true
+        self.client.is_some()
     }
 
     /// List all tracked projects
-    pub async fn list_projects(&self) -> Result<Vec<Project>> {
-        // TODO: Implement actual gRPC call
-        // For now, return sample data for development
-        Ok(vec![
-            Project {
-                path: "/home/user/projects/my-app".to_string(),
-                name: "my-app".to_string(),
-                project_title: Some("My Application".to_string()),
-                user_title: None,
-                is_favorite: true,
-                is_archived: false,
-                initialized: true,
-                issue_count: 15,
-                doc_count: 3,
-                pr_count: 2,
-            },
-            Project {
-                path: "/home/user/projects/api-server".to_string(),
-                name: "api-server".to_string(),
-                project_title: Some("API Server".to_string()),
-                user_title: None,
-                is_favorite: false,
-                is_archived: false,
-                initialized: true,
-                issue_count: 8,
-                doc_count: 5,
-                pr_count: 1,
-            },
-            Project {
-                path: "/home/user/projects/centy-tui".to_string(),
-                name: "centy-tui".to_string(),
-                project_title: Some("Centy TUI".to_string()),
-                user_title: None,
-                is_favorite: false,
-                is_archived: false,
-                initialized: true,
-                issue_count: 22,
-                doc_count: 2,
-                pr_count: 0,
-            },
-        ])
+    pub async fn list_projects(&mut self) -> Result<Vec<Project>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ListProjectsRequest {
+            include_stale: false,
+            include_uninitialized: false,
+            include_archived: false,
+            organization_slug: String::new(),
+            ungrouped_only: false,
+            include_temp: false,
+        });
+
+        let response = client
+            .list_projects(request)
+            .await
+            .map_err(|e| anyhow!("Failed to list projects: {}", e))?;
+
+        let projects = response
+            .into_inner()
+            .projects
+            .into_iter()
+            .map(|p| Project {
+                path: p.path,
+                name: p.name,
+                project_title: if p.project_title.is_empty() {
+                    None
+                } else {
+                    Some(p.project_title)
+                },
+                user_title: if p.user_title.is_empty() {
+                    None
+                } else {
+                    Some(p.user_title)
+                },
+                is_favorite: p.is_favorite,
+                is_archived: p.is_archived,
+                initialized: p.initialized,
+                issue_count: p.issue_count,
+                doc_count: p.doc_count,
+                pr_count: 0, // PR count not in proto, will need to be added or fetched separately
+            })
+            .collect();
+
+        Ok(projects)
     }
 
     /// List issues for a project
-    pub async fn list_issues(&self, _project_path: &str) -> Result<Vec<Issue>> {
-        // TODO: Implement actual gRPC call
-        Ok(vec![
-            Issue {
-                id: "abc-123".to_string(),
-                display_number: 1,
-                title: "Implement user authentication".to_string(),
-                description: "Add login and registration functionality".to_string(),
-                metadata: IssueMetadata {
-                    status: "open".to_string(),
-                    priority: 1,
-                    priority_label: Some("high".to_string()),
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                    custom_fields: HashMap::new(),
-                },
-            },
-            Issue {
-                id: "def-456".to_string(),
-                display_number: 2,
-                title: "Add dark mode support".to_string(),
-                description: "Allow users to switch between light and dark themes".to_string(),
-                metadata: IssueMetadata {
-                    status: "in-progress".to_string(),
-                    priority: 2,
-                    priority_label: Some("medium".to_string()),
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                    custom_fields: HashMap::new(),
-                },
-            },
-            Issue {
-                id: "ghi-789".to_string(),
-                display_number: 3,
-                title: "Fix navigation bug".to_string(),
-                description: "Navigation breaks when clicking back button quickly".to_string(),
-                metadata: IssueMetadata {
-                    status: "open".to_string(),
-                    priority: 1,
-                    priority_label: Some("high".to_string()),
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                    custom_fields: HashMap::new(),
-                },
-            },
-        ])
+    pub async fn list_issues(&mut self, project_path: &str) -> Result<Vec<Issue>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ListIssuesRequest {
+            project_path: project_path.to_string(),
+            status: String::new(),
+            priority: 0,
+            draft: None,
+        });
+
+        let response = client
+            .list_issues(request)
+            .await
+            .map_err(|e| anyhow!("Failed to list issues: {}", e))?;
+
+        let issues = response
+            .into_inner()
+            .issues
+            .into_iter()
+            .map(|i| {
+                let metadata = i.metadata.unwrap_or_default();
+                Issue {
+                    id: i.id,
+                    display_number: i.display_number,
+                    title: i.title,
+                    description: i.description,
+                    metadata: IssueMetadata {
+                        status: metadata.status,
+                        priority: metadata.priority as u32,
+                        priority_label: if metadata.priority_label.is_empty() {
+                            None
+                        } else {
+                            Some(metadata.priority_label)
+                        },
+                        created_at: parse_timestamp(&metadata.created_at),
+                        updated_at: parse_timestamp(&metadata.updated_at),
+                        custom_fields: metadata.custom_fields,
+                    },
+                }
+            })
+            .collect();
+
+        Ok(issues)
     }
 
     /// List PRs for a project
-    pub async fn list_prs(&self, _project_path: &str) -> Result<Vec<PullRequest>> {
-        // TODO: Implement actual gRPC call
-        Ok(vec![PullRequest {
-            id: "pr-001".to_string(),
-            display_number: 1,
-            title: "Add user authentication".to_string(),
-            description: "Implements login and registration".to_string(),
-            metadata: PrMetadata {
-                status: "open".to_string(),
-                priority: 1,
-                priority_label: Some("high".to_string()),
-                source_branch: "feature/auth".to_string(),
-                target_branch: "main".to_string(),
-                linked_issues: vec!["abc-123".to_string()],
-                reviewers: vec!["alice".to_string()],
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-                merged_at: None,
-                closed_at: None,
-                custom_fields: HashMap::new(),
-            },
-        }])
+    pub async fn list_prs(&mut self, project_path: &str) -> Result<Vec<PullRequest>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ListPrsRequest {
+            project_path: project_path.to_string(),
+            status: String::new(),
+            source_branch: String::new(),
+            target_branch: String::new(),
+            priority: 0,
+        });
+
+        let response = client
+            .list_prs(request)
+            .await
+            .map_err(|e| anyhow!("Failed to list PRs: {}", e))?;
+
+        let prs = response
+            .into_inner()
+            .prs
+            .into_iter()
+            .map(|pr| {
+                let metadata = pr.metadata.unwrap_or_default();
+                PullRequest {
+                    id: pr.id,
+                    display_number: pr.display_number,
+                    title: pr.title,
+                    description: pr.description,
+                    metadata: PrMetadata {
+                        status: metadata.status,
+                        priority: metadata.priority as u32,
+                        priority_label: if metadata.priority_label.is_empty() {
+                            None
+                        } else {
+                            Some(metadata.priority_label)
+                        },
+                        source_branch: metadata.source_branch,
+                        target_branch: metadata.target_branch,
+                        linked_issues: Vec::new(), // Links are now in separate system
+                        reviewers: metadata.reviewers,
+                        created_at: parse_timestamp(&metadata.created_at),
+                        updated_at: parse_timestamp(&metadata.updated_at),
+                        merged_at: if metadata.merged_at.is_empty() {
+                            None
+                        } else {
+                            Some(parse_timestamp(&metadata.merged_at))
+                        },
+                        closed_at: if metadata.closed_at.is_empty() {
+                            None
+                        } else {
+                            Some(parse_timestamp(&metadata.closed_at))
+                        },
+                        custom_fields: metadata.custom_fields,
+                    },
+                }
+            })
+            .collect();
+
+        Ok(prs)
     }
 
     /// List docs for a project
-    pub async fn list_docs(&self, _project_path: &str) -> Result<Vec<Doc>> {
-        // TODO: Implement actual gRPC call
-        Ok(vec![
-            Doc {
-                slug: "getting-started".to_string(),
-                title: "Getting Started".to_string(),
-                content: "# Getting Started\n\nWelcome to the project!".to_string(),
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
-            Doc {
-                slug: "api-reference".to_string(),
-                title: "API Reference".to_string(),
-                content: "# API Reference\n\nDocumentation for the API.".to_string(),
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
-        ])
+    pub async fn list_docs(&mut self, project_path: &str) -> Result<Vec<Doc>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ListDocsRequest {
+            project_path: project_path.to_string(),
+        });
+
+        let response = client
+            .list_docs(request)
+            .await
+            .map_err(|e| anyhow!("Failed to list docs: {}", e))?;
+
+        let docs = response
+            .into_inner()
+            .docs
+            .into_iter()
+            .map(|d| {
+                let metadata = d.metadata.unwrap_or_default();
+                Doc {
+                    slug: d.slug,
+                    title: d.title,
+                    content: d.content,
+                    created_at: parse_timestamp(&metadata.created_at),
+                    updated_at: parse_timestamp(&metadata.updated_at),
+                }
+            })
+            .collect();
+
+        Ok(docs)
     }
 
     /// Get project configuration
     #[allow(dead_code)]
-    pub async fn get_config(&self, _project_path: &str) -> Result<Config> {
-        // TODO: Implement actual gRPC call
+    pub async fn get_config(&mut self, project_path: &str) -> Result<Config> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::GetConfigRequest {
+            project_path: project_path.to_string(),
+        });
+
+        let response = client
+            .get_config(request)
+            .await
+            .map_err(|e| anyhow!("Failed to get config: {}", e))?;
+
+        let config = response.into_inner();
         Ok(Config {
-            priority_levels: 3,
-            allowed_states: vec![
-                "open".to_string(),
-                "in-progress".to_string(),
-                "closed".to_string(),
-            ],
-            default_state: "open".to_string(),
-            version: "1.0.0".to_string(),
+            priority_levels: config.priority_levels as u32,
+            allowed_states: config.allowed_states,
+            default_state: config.default_state,
+            version: config.version,
         })
     }
 
     /// Get daemon information
     #[allow(dead_code)]
-    pub async fn get_daemon_info(&self) -> Result<DaemonInfo> {
-        // TODO: Implement actual gRPC call
+    pub async fn get_daemon_info(&mut self) -> Result<DaemonInfo> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::GetDaemonInfoRequest {});
+
+        let response = client
+            .get_daemon_info(request)
+            .await
+            .map_err(|e| anyhow!("Failed to get daemon info: {}", e))?;
+
+        let info = response.into_inner();
         Ok(DaemonInfo {
-            version: "0.1.0".to_string(),
-            uptime_seconds: 3600,
-            project_count: 3,
+            version: info.version,
+            uptime_seconds: 0, // Not provided by proto
+            project_count: 0,  // Need to fetch separately
         })
     }
 
     /// Set project favorite status
     pub async fn set_project_favorite(
-        &self,
-        _project_path: &str,
-        _is_favorite: bool,
+        &mut self,
+        project_path: &str,
+        is_favorite: bool,
     ) -> Result<()> {
-        // TODO: Implement actual gRPC call
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::SetProjectFavoriteRequest {
+            project_path: project_path.to_string(),
+            is_favorite,
+        });
+
+        client
+            .set_project_favorite(request)
+            .await
+            .map_err(|e| anyhow!("Failed to set project favorite: {}", e))?;
+
         Ok(())
     }
 
     /// Set project archived status
     pub async fn set_project_archived(
-        &self,
-        _project_path: &str,
-        _is_archived: bool,
+        &mut self,
+        project_path: &str,
+        is_archived: bool,
     ) -> Result<()> {
-        // TODO: Implement actual gRPC call
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::SetProjectArchivedRequest {
+            project_path: project_path.to_string(),
+            is_archived,
+        });
+
+        client
+            .set_project_archived(request)
+            .await
+            .map_err(|e| anyhow!("Failed to set project archived: {}", e))?;
+
         Ok(())
     }
 
     /// Untrack a project
     #[allow(dead_code)]
-    pub async fn untrack_project(&self, _project_path: &str) -> Result<()> {
-        // TODO: Implement actual gRPC call
+    pub async fn untrack_project(&mut self, project_path: &str) -> Result<()> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::UntrackProjectRequest {
+            project_path: project_path.to_string(),
+        });
+
+        client
+            .untrack_project(request)
+            .await
+            .map_err(|e| anyhow!("Failed to untrack project: {}", e))?;
+
         Ok(())
     }
 
     /// Create a new issue
     pub async fn create_issue(
-        &self,
-        _project_path: &str,
-        _title: &str,
-        _description: &str,
-        _priority: u32,
+        &mut self,
+        project_path: &str,
+        title: &str,
+        description: &str,
+        priority: u32,
     ) -> Result<String> {
-        // TODO: Implement actual gRPC call
-        Ok("new-issue-id".to_string())
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::CreateIssueRequest {
+            project_path: project_path.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            priority: priority as i32,
+            status: String::new(),
+            custom_fields: HashMap::new(),
+            template: String::new(),
+            draft: false,
+        });
+
+        let response = client
+            .create_issue(request)
+            .await
+            .map_err(|e| anyhow!("Failed to create issue: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to create issue: {}", inner.error));
+        }
+
+        Ok(inner.id)
     }
 
     /// Update an existing issue
     pub async fn update_issue(
-        &self,
-        _project_path: &str,
-        _issue_id: &str,
-        _title: &str,
-        _description: &str,
-        _priority: u32,
-        _status: &str,
+        &mut self,
+        project_path: &str,
+        issue_id: &str,
+        title: &str,
+        description: &str,
+        priority: u32,
+        status: &str,
     ) -> Result<()> {
-        // TODO: Implement actual gRPC call
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::UpdateIssueRequest {
+            project_path: project_path.to_string(),
+            issue_id: issue_id.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            status: status.to_string(),
+            priority: priority as i32,
+            custom_fields: HashMap::new(),
+            draft: None,
+        });
+
+        let response = client
+            .update_issue(request)
+            .await
+            .map_err(|e| anyhow!("Failed to update issue: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to update issue: {}", inner.error));
+        }
+
         Ok(())
     }
 
     /// Create a new PR
     pub async fn create_pr(
-        &self,
-        _project_path: &str,
-        _title: &str,
-        _description: &str,
-        _source_branch: &str,
-        _target_branch: &str,
+        &mut self,
+        project_path: &str,
+        title: &str,
+        description: &str,
+        source_branch: &str,
+        target_branch: &str,
     ) -> Result<String> {
-        // TODO: Implement actual gRPC call
-        Ok("new-pr-id".to_string())
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::CreatePrRequest {
+            project_path: project_path.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            source_branch: source_branch.to_string(),
+            target_branch: target_branch.to_string(),
+            reviewers: Vec::new(),
+            priority: 0,
+            status: String::new(),
+            custom_fields: HashMap::new(),
+            template: String::new(),
+        });
+
+        let response = client
+            .create_pr(request)
+            .await
+            .map_err(|e| anyhow!("Failed to create PR: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to create PR: {}", inner.error));
+        }
+
+        Ok(inner.id)
     }
 
     /// Update an existing PR
     #[allow(clippy::too_many_arguments)]
     pub async fn update_pr(
-        &self,
-        _project_path: &str,
-        _pr_id: &str,
-        _title: &str,
-        _description: &str,
-        _source_branch: &str,
-        _target_branch: &str,
-        _status: &str,
+        &mut self,
+        project_path: &str,
+        pr_id: &str,
+        title: &str,
+        description: &str,
+        source_branch: &str,
+        target_branch: &str,
+        status: &str,
     ) -> Result<()> {
-        // TODO: Implement actual gRPC call
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::UpdatePrRequest {
+            project_path: project_path.to_string(),
+            pr_id: pr_id.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            status: status.to_string(),
+            source_branch: source_branch.to_string(),
+            target_branch: target_branch.to_string(),
+            reviewers: Vec::new(),
+            priority: 0,
+            custom_fields: HashMap::new(),
+        });
+
+        let response = client
+            .update_pr(request)
+            .await
+            .map_err(|e| anyhow!("Failed to update PR: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to update PR: {}", inner.error));
+        }
+
         Ok(())
     }
 
     /// Create a new doc
     pub async fn create_doc(
-        &self,
-        _project_path: &str,
-        _title: &str,
-        _content: &str,
-        _slug: Option<&str>,
+        &mut self,
+        project_path: &str,
+        title: &str,
+        content: &str,
+        slug: Option<&str>,
     ) -> Result<String> {
-        // TODO: Implement actual gRPC call
-        Ok("new-doc-slug".to_string())
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::CreateDocRequest {
+            project_path: project_path.to_string(),
+            title: title.to_string(),
+            content: content.to_string(),
+            slug: slug.unwrap_or("").to_string(),
+            template: String::new(),
+        });
+
+        let response = client
+            .create_doc(request)
+            .await
+            .map_err(|e| anyhow!("Failed to create doc: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to create doc: {}", inner.error));
+        }
+
+        Ok(inner.slug)
     }
 
     /// Restart the daemon
-    pub async fn restart(&self) -> Result<()> {
-        // TODO: Implement actual gRPC call
+    pub async fn restart(&mut self) -> Result<()> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::RestartRequest { delay_seconds: 0 });
+
+        client
+            .restart(request)
+            .await
+            .map_err(|e| anyhow!("Failed to restart daemon: {}", e))?;
+
+        // Clear the client so we reconnect on next call
+        self.client = None;
+
         Ok(())
     }
 
     /// Shutdown the daemon
-    pub async fn shutdown(&self) -> Result<()> {
-        // TODO: Implement actual gRPC call
+    pub async fn shutdown(&mut self) -> Result<()> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ShutdownRequest { delay_seconds: 0 });
+
+        client
+            .shutdown(request)
+            .await
+            .map_err(|e| anyhow!("Failed to shutdown daemon: {}", e))?;
+
+        // Clear the client since daemon is shutting down
+        self.client = None;
+
         Ok(())
     }
+}
+
+/// Parse an ISO timestamp string to DateTime<Utc>
+fn parse_timestamp(s: &str) -> DateTime<Utc> {
+    if s.is_empty() {
+        return Utc::now();
+    }
+    DateTime::parse_from_rfc3339(s)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now())
 }

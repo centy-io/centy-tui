@@ -25,7 +25,7 @@ impl App {
     /// Create a new App instance
     #[allow(clippy::field_reassign_with_default)]
     pub async fn new() -> Result<Self> {
-        let daemon = DaemonClient::new().await?;
+        let mut daemon = DaemonClient::new().await?;
         let mut state = AppState::default();
 
         // Start with splash screen
