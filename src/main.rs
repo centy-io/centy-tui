@@ -102,13 +102,12 @@ async fn run_app<B: ratatui::backend::Backend>(
         if event::poll(poll_duration)? {
             match event::read()? {
                 Event::Key(key) => {
-                    // Global quit: q or Ctrl+C (but not during splash or terminal view)
+                    // Global quit: Ctrl+C (but not during splash or terminal view)
                     let in_terminal = matches!(app.state.current_view, View::Terminal);
                     if !in_splash
                         && !in_terminal
-                        && (key.code == KeyCode::Char('q')
-                            || (key.code == KeyCode::Char('c')
-                                && key.modifiers.contains(KeyModifiers::CONTROL)))
+                        && key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         return Ok(());
                     }

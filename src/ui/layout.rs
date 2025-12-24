@@ -159,7 +159,7 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
     }
 
     // Quit hint on the right
-    let quit_hint = " q:quit ";
+    let quit_hint = " ^C:quit ";
 
     let status = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
 
