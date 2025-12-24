@@ -30,6 +30,7 @@ pub struct DaemonClient {
 
 /// Result from opening a project in a temporary VS Code workspace
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct OpenInVscodeResult {
     pub workspace_path: String,
     pub issue_id: String,

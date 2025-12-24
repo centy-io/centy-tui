@@ -147,11 +147,35 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
         return;
     };
 
+    // Split area into content (left) and action panel (right)
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(22)])
+        .split(area);
+
+    let content_area = chunks[0];
+    let action_area = chunks[1];
+
+    // Draw content
+    draw_issue_content(frame, content_area, app, issue);
+
+    // Draw action panel
+    draw_action_panel(frame, action_area, app);
+}
+
+/// Draw the issue content (left side)
+fn draw_issue_content(frame: &mut Frame, area: Rect, app: &App, issue: &crate::state::Issue) {
     let title = format!(" #{} {} ", issue.display_number, issue.title);
     let priority_color = match issue.metadata.priority {
         1 => Color::Red,
         2 => Color::Yellow,
         _ => Color::Green,
+    };
+
+    // Border color based on focus
+    let border_color = match app.state.issue_detail_focus {
+        IssueDetailFocus::Content => Color::Cyan,
+        IssueDetailFocus::ActionPanel => Color::DarkGray,
     };
 
     let mut content = vec![
@@ -223,10 +247,86 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
             Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(Style::default().fg(border_color)),
         )
         .wrap(Wrap { trim: false })
         .scroll((app.state.scroll_offset as u16, 0));
 
     frame.render_widget(paragraph, area);
+}
+
+/// Draw the action panel (right side)
+fn draw_action_panel(frame: &mut Frame, area: Rect, app: &App) {
+    // Border color based on focus
+    let border_color = match app.state.issue_detail_focus {
+        IssueDetailFocus::ActionPanel => Color::Cyan,
+        IssueDetailFocus::Content => Color::DarkGray,
+    };
+
+    let llm_action = &app.state.action_panel_llm_action;
+
+    // Build action panel content
+    let content = vec![
+        Line::from(""),
+        // Open in VSCode button
+        Line::from(vec![
+            Span::styled(" ▸ ", Style::default().fg(Color::Cyan)),
+            Span::styled(
+                "Open in VSCode",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "─".repeat(18),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        // Mode selection
+        Line::from(Span::styled("Mode:", Style::default().fg(Color::DarkGray))),
+        Line::from(vec![
+            Span::raw(" "),
+            if matches!(llm_action, crate::state::LlmAction::Plan) {
+                Span::styled(
+                    "[Plan]",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled("Plan", Style::default().fg(Color::DarkGray))
+            },
+            Span::raw(" "),
+            if matches!(llm_action, crate::state::LlmAction::Implement) {
+                Span::styled(
+                    "[Impl]",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled("Impl", Style::default().fg(Color::DarkGray))
+            },
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            " p/i to toggle",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            " Enter to run",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let panel = Paragraph::new(content).block(
+        Block::default()
+            .title(" Actions ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color)),
+    );
+
+    frame.render_widget(panel, area);
 }

@@ -150,6 +150,7 @@ pub enum LlmAction {
     Implement,
 }
 
+#[allow(dead_code)]
 impl LlmAction {
     pub fn toggle(&mut self) {
         *self = match self {
@@ -165,7 +166,7 @@ impl LlmAction {
         }
     }
 
-    pub fn to_proto_value(&self) -> i32 {
+    pub fn as_proto_value(self) -> i32 {
         match self {
             Self::Plan => 1,
             Self::Implement => 2,

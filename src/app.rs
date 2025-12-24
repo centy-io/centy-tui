@@ -1,7 +1,9 @@
 //! Application state and core logic
 
 use crate::daemon::DaemonClient;
-use crate::state::{AppState, LogoStyle, SplashState, View, ViewParams};
+use crate::state::{
+    AppState, IssueDetailFocus, LlmAction, LogoStyle, SplashState, View, ViewParams,
+};
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use std::time::{Duration, Instant};
@@ -325,6 +327,11 @@ impl App {
     /// Handle keys in Issue Detail view
     async fn handle_issue_detail_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
+            // Tab: Switch focus between content and action panel
+            KeyCode::Tab => {
+                self.state.issue_detail_focus.toggle();
+            }
+            // Edit issue
             KeyCode::Char('e') => {
                 if let Some(issue_id) = &self.state.selected_issue_id {
                     self.navigate(
@@ -336,10 +343,41 @@ impl App {
                     );
                 }
             }
-            KeyCode::Char('j') | KeyCode::Down => self.state.scroll_down(),
-            KeyCode::Char('k') | KeyCode::Up => self.state.scroll_up(),
-            KeyCode::Char('d') | KeyCode::PageDown => self.state.scroll_down_page(),
-            KeyCode::Char('u') | KeyCode::PageUp => self.state.scroll_up_page(),
+            // Scroll (only when content is focused)
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.issue_detail_focus, IssueDetailFocus::Content) {
+                    self.state.scroll_down();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.issue_detail_focus, IssueDetailFocus::Content) {
+                    self.state.scroll_up();
+                }
+            }
+            KeyCode::Char('d') | KeyCode::PageDown => {
+                if matches!(self.state.issue_detail_focus, IssueDetailFocus::Content) {
+                    self.state.scroll_down_page();
+                }
+            }
+            KeyCode::Char('u') | KeyCode::PageUp => {
+                if matches!(self.state.issue_detail_focus, IssueDetailFocus::Content) {
+                    self.state.scroll_up_page();
+                }
+            }
+            // Toggle LLM action mode (Plan/Implement)
+            KeyCode::Char('p') => {
+                self.state.action_panel_llm_action = LlmAction::Plan;
+            }
+            KeyCode::Char('i') => {
+                self.state.action_panel_llm_action = LlmAction::Implement;
+            }
+            // Execute action (Enter when action panel is focused)
+            KeyCode::Enter => {
+                if matches!(self.state.issue_detail_focus, IssueDetailFocus::ActionPanel) {
+                    self.execute_open_in_vscode().await?;
+                }
+            }
+            // Copy shortcuts
             KeyCode::Char('y') => {
                 if let Some(issue) = self.get_current_issue() {
                     self.copy_to_clipboard(&format!("#{} {}", issue.display_number, issue.title))?;
@@ -352,9 +390,64 @@ impl App {
                     self.copy_message = Some("Copied UUID".to_string());
                 }
             }
-            KeyCode::Esc | KeyCode::Backspace => self.go_back(),
+            // Go back (also reset focus)
+            KeyCode::Esc | KeyCode::Backspace => {
+                self.state.issue_detail_focus = IssueDetailFocus::Content;
+                self.go_back();
+            }
             _ => {}
         }
+        Ok(())
+    }
+
+    /// Execute the "Open in VSCode" action
+    async fn execute_open_in_vscode(&mut self) -> Result<()> {
+        let project_path = match &self.state.selected_project_path {
+            Some(path) => path.clone(),
+            None => {
+                self.status_message = Some("No project selected".to_string());
+                return Ok(());
+            }
+        };
+
+        let issue_id = match &self.state.selected_issue_id {
+            Some(id) => id.clone(),
+            None => {
+                self.status_message = Some("No issue selected".to_string());
+                return Ok(());
+            }
+        };
+
+        let action = self.state.action_panel_llm_action.as_proto_value();
+
+        self.status_message = Some("Opening in VSCode...".to_string());
+
+        match self
+            .daemon
+            .open_in_temp_vscode(&project_path, &issue_id, action, "", 0)
+            .await
+        {
+            Ok(result) => {
+                if result.vscode_opened {
+                    self.status_message = Some(format!(
+                        "Opened #{} in VSCode (expires: {})",
+                        result.display_number,
+                        result
+                            .expires_at
+                            .split('T')
+                            .next()
+                            .unwrap_or(&result.expires_at)
+                    ));
+                } else {
+                    self.status_message =
+                        Some(format!("Workspace created at {}", result.workspace_path));
+                }
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Failed to open: {}", e));
+            }
+        }
+
         Ok(())
     }
 
