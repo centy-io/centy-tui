@@ -1,0 +1,57 @@
+[package]
+name = "centy-tui"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal User Interface for Centy project management"
+license = "MIT"
+repository = "https://github.com/centy-io/centy-io"
+keywords = ["tui", "cli", "project-management", "issues"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+# TUI Framework
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# gRPC client for daemon communication
+tonic = "0.12"
+prost = "0.13"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Configuration
+directories = "6"
+
+# Date/time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID support
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Clipboard
+arboard = "3"
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[[bin]]
+name = "centy-tui"
+path = "src/main.rs"
