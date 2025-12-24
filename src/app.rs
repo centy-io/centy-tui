@@ -3,6 +3,7 @@
 use crate::daemon::DaemonClient;
 use crate::state::{AppState, LogoStyle, SplashState, View, ViewParams};
 use anyhow::Result;
+use cockpit::{PaneManager, PaneSize, SpawnConfig};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Main application struct
@@ -19,6 +20,10 @@ pub struct App {
     pub copy_message: Option<String>,
     /// Splash screen animation state
     pub splash_state: Option<SplashState>,
+    /// Terminal size for pane initialization
+    pub terminal_size: Option<(u16, u16)>,
+    /// Esc key counter for double-Esc detection
+    esc_count: u8,
 }
 
 impl App {
@@ -48,6 +53,8 @@ impl App {
             status_message: None,
             copy_message: None,
             splash_state: Some(SplashState::new(LogoStyle::default())),
+            terminal_size: None,
+            esc_count: 0,
         })
     }
 
@@ -96,6 +103,7 @@ impl App {
             View::DocCreate => self.handle_doc_create_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
             View::Daemon => self.handle_daemon_key(key).await?,
+            View::Terminal => self.handle_terminal_key(key).await?,
         }
 
         Ok(())
@@ -207,6 +215,10 @@ impl App {
             KeyCode::Char('6') => {
                 self.state.sidebar_index = 5;
                 self.navigate(View::Daemon, ViewParams::default());
+            }
+            KeyCode::Char('7') => {
+                self.state.sidebar_index = 6;
+                self.navigate(View::Terminal, ViewParams::default());
             }
             _ => {}
         }
@@ -746,6 +758,83 @@ impl App {
         if let Some(ref mut splash) = self.splash_state {
             splash.skip();
         }
+        Ok(())
+    }
+
+    /// Handle keys in Terminal view
+    async fn handle_terminal_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Reset esc count on non-Esc keys
+        if key.code != KeyCode::Esc {
+            self.esc_count = 0;
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                self.esc_count += 1;
+                if self.esc_count >= 2 {
+                    // Double-Esc: exit terminal view
+                    self.esc_count = 0;
+                    self.go_back();
+                }
+            }
+            KeyCode::Char('n') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Create new terminal pane
+                self.create_terminal_pane().await?;
+            }
+            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Focus next pane
+                if let Some(ref mut manager) = self.state.pane_manager {
+                    manager.focus_next();
+                }
+            }
+            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Focus previous pane
+                if let Some(ref mut manager) = self.state.pane_manager {
+                    manager.focus_prev();
+                }
+            }
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Close current pane
+                if let Some(ref mut manager) = self.state.pane_manager {
+                    if let Some(focused) = manager.focused() {
+                        manager.close_pane(focused);
+                    }
+                }
+            }
+            _ => {
+                // Forward all other keys to the focused pane
+                if let Some(ref mut manager) = self.state.pane_manager {
+                    manager.route_key(key).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Create a new terminal pane
+    async fn create_terminal_pane(&mut self) -> Result<()> {
+        // Get terminal size or use default
+        let (height, width) = self.terminal_size.unwrap_or((24, 80));
+        let pane_size = PaneSize::new(height, width);
+
+        // Initialize pane manager if needed
+        if self.state.pane_manager.is_none() {
+            self.state.pane_manager = Some(PaneManager::new());
+        }
+
+        if let Some(ref mut manager) = self.state.pane_manager {
+            // Spawn a new pane with default shell
+            let config = SpawnConfig::new(pane_size);
+            match manager.spawn(config) {
+                Ok(_pane) => {
+                    self.status_message = Some("Terminal pane created".to_string());
+                }
+                Err(e) => {
+                    self.status_message = Some(format!("Failed to create pane: {e}"));
+                }
+            }
+        }
+
         Ok(())
     }
 

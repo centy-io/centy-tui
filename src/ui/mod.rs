@@ -9,6 +9,7 @@ mod layout;
 mod projects;
 mod prs;
 mod splash;
+mod terminal;
 
 use crate::app::App;
 use crate::state::View;
@@ -49,6 +50,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         View::DocCreate => forms::draw_doc_create(frame, main_area, app),
         View::Config => config_panel::draw(frame, main_area, app),
         View::Daemon => daemon_panel::draw(frame, main_area, app),
+        View::Terminal => terminal::draw(frame, main_area, app),
     }
 
     // Draw status bar
