@@ -1,5 +1,6 @@
 //! Application state definitions
 
+use super::SelectionState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -389,6 +390,9 @@ pub struct AppState {
     pub form_slug: String,
     pub form_source_branch: String,
     pub form_target_branch: String,
+
+    // Text selection state
+    pub selection: SelectionState,
 }
 
 impl AppState {

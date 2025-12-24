@@ -13,12 +13,16 @@ mod widgets;
 pub use widgets::render_scrollable_list;
 
 use crate::app::App;
-use crate::state::View;
+use crate::state::{ScreenPos, View};
+use ratatui::style::Modifier;
 use ratatui::Frame;
 
 /// Main draw function
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+
+    // Update screen buffer dimensions
+    app.screen_buffer.resize(area.width, area.height);
 
     // Splash screen takes full screen (no sidebar or status bar)
     if let View::Splash = &app.state.current_view {
@@ -61,4 +65,67 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     // Draw status bar
     layout::draw_status_bar(frame, app);
+
+    // Apply text selection highlighting
+    if app.state.selection.has_selection() || app.state.selection.is_selecting {
+        // Populate screen buffer with current frame content
+        populate_screen_buffer(frame, &mut app.screen_buffer);
+        // Apply selection highlighting
+        apply_selection_highlight(frame, &app.state.selection, area);
+    }
+}
+
+/// Populate the screen buffer from the current frame
+fn populate_screen_buffer(frame: &mut Frame, screen_buffer: &mut crate::state::ScreenBuffer) {
+    screen_buffer.clear();
+    let area = frame.area();
+
+    for row in area.y..area.y + area.height {
+        for col in area.x..area.x + area.width {
+            if let Some(cell) = frame.buffer_mut().cell((col, row)) {
+                let symbol = cell.symbol();
+                if let Some(ch) = symbol.chars().next() {
+                    if ch != ' ' {
+                        screen_buffer.set(col, row, ch);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Apply selection highlighting to the frame
+fn apply_selection_highlight(
+    frame: &mut Frame,
+    selection: &crate::state::SelectionState,
+    area: ratatui::layout::Rect,
+) {
+    if let Some((_start, _end)) = selection.get_range() {
+        for row in area.y..area.y + area.height {
+            for col in area.x..area.x + area.width {
+                let pos = ScreenPos::new(col, row);
+                if selection.contains(pos) {
+                    if let Some(cell) = frame.buffer_mut().cell_mut((col, row)) {
+                        // Apply reverse video for selection
+                        let current_style = cell.style();
+                        cell.set_style(current_style.add_modifier(Modifier::REVERSED));
+                    }
+                }
+            }
+        }
+
+        // Show keyboard cursor if in keyboard mode
+        if selection.keyboard_mode {
+            if let Some(cursor_pos) = selection.keyboard_cursor {
+                if cursor_pos.col < area.width && cursor_pos.row < area.height {
+                    if let Some(cell) =
+                        frame.buffer_mut().cell_mut((cursor_pos.col, cursor_pos.row))
+                    {
+                        let current_style = cell.style();
+                        cell.set_style(current_style.add_modifier(Modifier::SLOW_BLINK));
+                    }
+                }
+            }
+        }
+    }
 }
