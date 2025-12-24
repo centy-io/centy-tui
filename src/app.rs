@@ -4,6 +4,7 @@ use crate::daemon::DaemonClient;
 use crate::state::{AppState, LogoStyle, SplashState, View, ViewParams};
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use std::time::{Duration, Instant};
 
 /// Main application struct
 pub struct App {
@@ -78,6 +79,15 @@ impl App {
         self.quit
     }
 
+    /// Get the sidebar width (0 if no project selected, 20 otherwise)
+    pub fn sidebar_width(&self) -> u16 {
+        if self.state.selected_project_path.is_some() {
+            20
+        } else {
+            0
+        }
+    }
+
     /// Calculate number of columns for project grid based on terminal width
     pub fn calculate_project_grid_columns(&self) -> usize {
         // Use stored terminal size or default
@@ -87,8 +97,9 @@ impl App {
             .map(|(_, w)| w)
             .unwrap_or(80);
 
-        // Subtract sidebar width (20) and outer borders (2)
-        let usable_width = width.saturating_sub(22);
+        // Subtract sidebar width (dynamic) and outer borders (2)
+        let sidebar_width = self.sidebar_width();
+        let usable_width = width.saturating_sub(sidebar_width + 2);
 
         const MIN_CARD_WIDTH: u16 = 18;
         const CARD_SPACING_H: u16 = 1;
@@ -696,7 +707,9 @@ impl App {
     /// Handle mouse events
     pub async fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         self.copy_message = None;
-        if self.state.current_view != View::Splash && self.handle_sidebar_mouse(mouse).await? {
+        // Only check sidebar mouse if sidebar is visible (project selected)
+        let has_project = self.state.selected_project_path.is_some();
+        if has_project && self.state.current_view != View::Splash && self.handle_sidebar_mouse(mouse).await? {
             return Ok(());
         }
         match self.state.current_view {
@@ -766,13 +779,13 @@ impl App {
 
     /// Handle mouse events in list views (Issues, PRs, Docs)
     async fn handle_list_mouse(&mut self, mouse: MouseEvent, list_len: usize) -> Result<()> {
-        const MAIN_AREA_START_X: u16 = 20;
+        let main_area_start_x = self.sidebar_width();
         const LIST_ITEMS_START_Y: u16 = 1;
         match mouse.kind {
             MouseEventKind::ScrollUp => self.state.move_selection_up(),
             MouseEventKind::ScrollDown => self.state.move_selection_down(list_len),
             MouseEventKind::Down(MouseButton::Left) => {
-                if mouse.column >= MAIN_AREA_START_X && mouse.row >= LIST_ITEMS_START_Y {
+                if mouse.column >= main_area_start_x && mouse.row >= LIST_ITEMS_START_Y {
                     let clicked_index = (mouse.row - LIST_ITEMS_START_Y) as usize;
                     if clicked_index < list_len {
                         self.state.selected_index = clicked_index;
@@ -786,7 +799,7 @@ impl App {
 
     /// Handle mouse events in Projects grid view
     async fn handle_projects_grid_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
-        const MAIN_AREA_START_X: u16 = 20;
+        let main_area_start_x = self.sidebar_width();
         const GRID_START_Y: u16 = 2; // After outer border (1) + inner content start
         const MIN_CARD_WIDTH: u16 = 18;
         const CARD_HEIGHT: u16 = 4;
@@ -801,7 +814,7 @@ impl App {
 
         // Calculate card width based on available space
         let terminal_width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
-        let usable_width = terminal_width.saturating_sub(MAIN_AREA_START_X + 2);
+        let usable_width = terminal_width.saturating_sub(main_area_start_x + 2);
         let total_spacing = (columns.saturating_sub(1) as u16) * CARD_SPACING_H;
         let card_width = if columns > 0 {
             (usable_width.saturating_sub(total_spacing)) / columns as u16
@@ -818,8 +831,8 @@ impl App {
                 self.state.move_selection_down_grid(columns, total);
             }
             MouseEventKind::Down(MouseButton::Left) => {
-                if mouse.column >= MAIN_AREA_START_X && mouse.row >= GRID_START_Y {
-                    let rel_x = mouse.column - MAIN_AREA_START_X - 1; // -1 for border
+                if mouse.column >= main_area_start_x && mouse.row >= GRID_START_Y {
+                    let rel_x = mouse.column - main_area_start_x - 1; // -1 for border
                     let rel_y = mouse.row - GRID_START_Y;
 
                     // Calculate which card was clicked
@@ -829,7 +842,43 @@ impl App {
                     if col < columns {
                         let clicked_index = row * columns + col;
                         if clicked_index < total {
-                            self.state.selected_index = clicked_index;
+                            // Check for double-click: same index clicked within 400ms
+                            let is_double_click = self
+                                .state
+                                .last_click_index
+                                .map(|last_idx| {
+                                    last_idx == clicked_index
+                                        && self
+                                            .state
+                                            .last_click_time
+                                            .map(|t| t.elapsed() < Duration::from_millis(400))
+                                            .unwrap_or(false)
+                                })
+                                .unwrap_or(false);
+
+                            if is_double_click {
+                                // Double-click: open the project
+                                let project_path = self
+                                    .state
+                                    .sorted_projects()
+                                    .get(clicked_index)
+                                    .map(|p| p.path.clone());
+                                if let Some(path) = project_path {
+                                    self.state.selected_project_path = Some(path.clone());
+                                    if let Ok(issues) = self.daemon.list_issues(&path).await {
+                                        self.state.issues = issues;
+                                    }
+                                    self.navigate(View::Issues, ViewParams::default());
+                                }
+                                // Reset click tracking after opening
+                                self.state.last_click_time = None;
+                                self.state.last_click_index = None;
+                            } else {
+                                // Single click: select the card and update tracking
+                                self.state.selected_index = clicked_index;
+                                self.state.last_click_time = Some(Instant::now());
+                                self.state.last_click_index = Some(clicked_index);
+                            }
                         }
                     }
                 }
@@ -850,11 +899,11 @@ impl App {
     }
 
     async fn handle_form_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
-        const MAIN_AREA_START_X: u16 = 20;
+        let main_area_start_x = self.sidebar_width();
         const FORM_START_Y: u16 = 1;
         const FIELD_HEIGHT: u16 = 3;
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            if mouse.column >= MAIN_AREA_START_X && mouse.row >= FORM_START_Y {
+            if mouse.column >= main_area_start_x && mouse.row >= FORM_START_Y {
                 let field_index = ((mouse.row - FORM_START_Y) / FIELD_HEIGHT) as usize;
                 let max_fields = self.state.form_field_count();
                 if field_index < max_fields {

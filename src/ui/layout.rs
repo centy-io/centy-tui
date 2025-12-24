@@ -49,6 +49,20 @@ pub fn create_layout(area: Rect) -> (Rect, Rect) {
     (sidebar_chunks[0], main_chunks[0])
 }
 
+/// Create full-width layout without sidebar (for when no project is selected)
+pub fn create_layout_no_sidebar(area: Rect) -> Rect {
+    // Reserve bottom line for status bar
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // Content
+            Constraint::Length(1), // Status bar
+        ])
+        .split(area);
+
+    chunks[0]
+}
+
 /// Draw the sidebar
 pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     let has_project = app.state.selected_project_path.is_some();

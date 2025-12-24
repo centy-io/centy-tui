@@ -3,6 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Current view in the application
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -299,6 +300,10 @@ pub struct AppState {
     pub scroll_offset: usize,
     pub daemon_connected: bool,
     pub confirm_action: Option<String>,
+
+    // Double-click detection for project grid
+    pub last_click_time: Option<Instant>,
+    pub last_click_index: Option<usize>,
 
     // Form state
     pub active_form_field: usize,

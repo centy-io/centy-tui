@@ -25,11 +25,18 @@ pub fn draw(frame: &mut Frame, app: &App) {
         return;
     }
 
-    // Draw the main layout with sidebar
-    let (sidebar_area, main_area) = layout::create_layout(area);
+    // Determine if we should show sidebar (only when a project is selected)
+    let has_project = app.state.selected_project_path.is_some();
 
-    // Draw sidebar
-    layout::draw_sidebar(frame, sidebar_area, app);
+    let main_area = if has_project {
+        // Draw the main layout with sidebar
+        let (sidebar_area, main_area) = layout::create_layout(area);
+        layout::draw_sidebar(frame, sidebar_area, app);
+        main_area
+    } else {
+        // Full-width layout without sidebar
+        layout::create_layout_no_sidebar(area)
+    };
 
     // Draw main content based on current view
     match &app.state.current_view {
