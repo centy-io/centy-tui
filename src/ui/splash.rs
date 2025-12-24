@@ -1,6 +1,6 @@
 //! Splash screen rendering with ASCII art logo
 
-use crate::state::{LogoStyle, SplashState};
+use crate::state::SplashState;
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
@@ -13,12 +13,30 @@ use ratatui::{
 fn build_centy_text() -> Vec<Line<'static>> {
     let style = Style::default().fg(Color::Cyan);
     vec![
-        Line::from(Span::styled("   ██████╗███████╗███╗   ██╗████████╗██╗   ██╗", style)),
-        Line::from(Span::styled("  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝╚██╗ ██╔╝", style)),
-        Line::from(Span::styled("  ██║     █████╗  ██╔██╗ ██║   ██║    ╚████╔╝ ", style)),
-        Line::from(Span::styled("  ██║     ██╔══╝  ██║╚██╗██║   ██║     ╚██╔╝  ", style)),
-        Line::from(Span::styled("  ╚██████╗███████╗██║ ╚████║   ██║      ██║   ", style)),
-        Line::from(Span::styled("   ╚═════╝╚══════╝╚═╝  ╚═══╝   ╚═╝      ╚═╝   ", style)),
+        Line::from(Span::styled(
+            "   ██████╗███████╗███╗   ██╗████████╗██╗   ██╗",
+            style,
+        )),
+        Line::from(Span::styled(
+            "  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝╚██╗ ██╔╝",
+            style,
+        )),
+        Line::from(Span::styled(
+            "  ██║     █████╗  ██╔██╗ ██║   ██║    ╚████╔╝ ",
+            style,
+        )),
+        Line::from(Span::styled(
+            "  ██║     ██╔══╝  ██║╚██╗██║   ██║     ╚██╔╝  ",
+            style,
+        )),
+        Line::from(Span::styled(
+            "  ╚██████╗███████╗██║ ╚████║   ██║      ██║   ",
+            style,
+        )),
+        Line::from(Span::styled(
+            "   ╚═════╝╚══════╝╚═╝  ╚═══╝   ╚═╝      ╚═╝   ",
+            style,
+        )),
     ]
 }
 
@@ -66,10 +84,7 @@ pub fn draw(frame: &mut Frame, area: Rect, splash_state: &SplashState) {
         let hint_x = area.x + (area.width.saturating_sub(hint.len() as u16)) / 2;
         let hint_y = area.y + area.height - 2;
 
-        let hint_line = Line::from(Span::styled(
-            hint,
-            Style::default().fg(Color::DarkGray),
-        ));
+        let hint_line = Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray)));
         let hint_area = Rect {
             x: hint_x,
             y: hint_y,

@@ -3,7 +3,9 @@
 //! This module provides a client for communicating with the Centy daemon
 //! via gRPC using the generated proto types.
 
-use crate::state::{Config, DaemonInfo, Doc, Issue, IssueMetadata, PrMetadata, Project, PullRequest};
+use crate::state::{
+    Config, DaemonInfo, Doc, Issue, IssueMetadata, PrMetadata, Project, PullRequest,
+};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -33,16 +35,15 @@ impl DaemonClient {
             std::env::var("CENTY_DAEMON_ADDRESS").unwrap_or_else(|_| DEFAULT_ADDRESS.to_string());
 
         // Try to connect to the daemon
-        let client = match CentyDaemonClient::connect(address.clone()).await {
-            Ok(client) => Some(client),
-            Err(_) => None,
-        };
+        let client = CentyDaemonClient::connect(address.clone()).await.ok();
 
         Ok(Self { client, address })
     }
 
     /// Ensure connection is established
-    async fn ensure_connected(&mut self) -> Result<&mut CentyDaemonClient<tonic::transport::Channel>> {
+    async fn ensure_connected(
+        &mut self,
+    ) -> Result<&mut CentyDaemonClient<tonic::transport::Channel>> {
         if self.client.is_none() {
             self.client = Some(
                 CentyDaemonClient::connect(self.address.clone())
@@ -50,7 +51,9 @@ impl DaemonClient {
                     .map_err(|e| anyhow!("Failed to connect to daemon: {}", e))?,
             );
         }
-        self.client.as_mut().ok_or_else(|| anyhow!("Client not connected"))
+        self.client
+            .as_mut()
+            .ok_or_else(|| anyhow!("Client not connected"))
     }
 
     /// Check if the daemon is reachable

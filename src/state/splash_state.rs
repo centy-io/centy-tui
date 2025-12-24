@@ -14,6 +14,7 @@ pub enum SplashPhase {
 }
 
 /// Logo style options
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LogoStyle {
     /// Large figlet-style block letters
@@ -31,6 +32,7 @@ pub struct SplashState {
     /// When the splash started
     pub start_time: Instant,
     /// Selected logo style
+    #[allow(dead_code)]
     pub logo_style: LogoStyle,
     /// Current animation phase
     pub phase: SplashPhase,
