@@ -353,6 +353,7 @@ pub struct AppState {
     // Issue detail action panel state
     pub issue_detail_focus: IssueDetailFocus,
     pub action_panel_llm_action: LlmAction,
+    pub action_panel_index: usize, // Selected item in action panel (0=VSCode, 1=Plan, 2=Impl, 3+=states)
 
     // Double-click detection for project grid
     pub last_click_time: Option<Instant>,
