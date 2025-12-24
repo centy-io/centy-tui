@@ -47,9 +47,6 @@ arboard = "3"
 # Animation
 simple-easing = "1.0"
 
-# Terminal multiplexer
-cockpit = "0.1"
-
 [build-dependencies]
 tonic-build = "0.12"
 

@@ -1,7 +1,6 @@
 //! Application state definitions
 
 use chrono::{DateTime, Utc};
-use cockpit::PaneManager;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -24,7 +23,6 @@ pub enum View {
     DocDetail,
     DocCreate,
     Config,
-    Terminal,
 }
 
 /// View parameters for navigation
@@ -271,9 +269,6 @@ pub struct AppState {
     // Project
     pub projects: Vec<Project>,
     pub selected_project_path: Option<String>,
-
-    // Terminal (cockpit pane manager)
-    pub pane_manager: Option<PaneManager>,
 
     // Data
     pub issues: Vec<Issue>,
