@@ -24,7 +24,6 @@ pub enum View {
     DocDetail,
     DocCreate,
     Config,
-    Daemon,
     Terminal,
 }
 

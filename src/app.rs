@@ -102,7 +102,6 @@ impl App {
             View::DocDetail => self.handle_doc_detail_key(key).await?,
             View::DocCreate => self.handle_doc_create_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
-            View::Daemon => self.handle_daemon_key(key).await?,
             View::Terminal => self.handle_terminal_key(key).await?,
         }
 
@@ -214,10 +213,6 @@ impl App {
             }
             KeyCode::Char('6') => {
                 self.state.sidebar_index = 5;
-                self.navigate(View::Daemon, ViewParams::default());
-            }
-            KeyCode::Char('7') => {
-                self.state.sidebar_index = 6;
                 self.navigate(View::Terminal, ViewParams::default());
             }
             _ => {}
@@ -729,30 +724,6 @@ impl App {
         Ok(())
     }
 
-    /// Handle keys in Daemon view
-    async fn handle_daemon_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('r') => {
-                // Restart daemon
-                if self.daemon.restart().await.is_ok() {
-                    self.status_message = Some("Daemon restart initiated".to_string());
-                }
-            }
-            KeyCode::Char('s') => {
-                // Shutdown daemon
-                if self.daemon.shutdown().await.is_ok() {
-                    self.status_message = Some("Daemon shutdown initiated".to_string());
-                    self.state.daemon_connected = false;
-                }
-            }
-            KeyCode::Esc | KeyCode::Backspace => {
-                self.go_back();
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
     /// Handle keys in Splash screen - any key skips the animation
     async fn handle_splash_key(&mut self, _key: KeyEvent) -> Result<()> {
         if let Some(ref mut splash) = self.splash_state {
@@ -794,7 +765,6 @@ impl App {
             View::DocDetail => self.handle_scroll_mouse(mouse).await?,
             View::DocCreate => self.handle_form_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
-            View::Daemon => {}   // No mouse handling needed
             View::Terminal => {} // No mouse handling for terminal
         }
 
@@ -843,7 +813,7 @@ impl App {
                     }
                     5 => {
                         self.state.sidebar_index = 5;
-                        self.navigate(View::Daemon, ViewParams::default());
+                        self.navigate(View::Terminal, ViewParams::default());
                         return Ok(true);
                     }
                     _ => {}

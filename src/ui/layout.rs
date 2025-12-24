@@ -17,8 +17,7 @@ const SIDEBAR_ITEMS: &[(&str, &str)] = &[
     ("3", "PRs"),
     ("4", "Docs"),
     ("5", "Config"),
-    ("6", "Daemon"),
-    ("7", "Terminal"),
+    ("6", "Terminal"),
 ];
 
 /// Create the main layout with sidebar
@@ -75,8 +74,7 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
                     View::Docs | View::DocDetail | View::DocCreate
                 ),
                 4 => matches!(app.state.current_view, View::Config),
-                5 => matches!(app.state.current_view, View::Daemon),
-                6 => matches!(app.state.current_view, View::Terminal),
+                5 => matches!(app.state.current_view, View::Terminal),
                 _ => false,
             };
 
@@ -192,7 +190,6 @@ fn get_view_hints(view: &View) -> &'static str {
         View::DocDetail => "j/k:scroll  d/u:page  Esc:back",
         View::DocCreate => "Tab:next  ^S:save  Esc:cancel",
         View::Config => "j/k:scroll  Esc:back",
-        View::Daemon => "r:restart  s:shutdown  Esc:back",
         View::Terminal => "n:new  ^N:next  ^P:prev  ^W:close  Esc Esc:back",
     }
 }

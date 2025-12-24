@@ -1,7 +1,6 @@
 //! UI module for rendering the TUI
 
 mod config_panel;
-mod daemon_panel;
 mod docs;
 mod forms;
 mod issues;
@@ -49,7 +48,6 @@ pub fn draw(frame: &mut Frame, app: &App) {
         View::DocDetail => docs::draw_detail(frame, main_area, app),
         View::DocCreate => forms::draw_doc_create(frame, main_area, app),
         View::Config => config_panel::draw(frame, main_area, app),
-        View::Daemon => daemon_panel::draw(frame, main_area, app),
         View::Terminal => terminal::draw(frame, main_area, app),
     }
 
