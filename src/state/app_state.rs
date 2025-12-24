@@ -142,6 +142,23 @@ impl IssueDetailFocus {
     }
 }
 
+/// Focus state for issues list view (list vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IssuesListFocus {
+    #[default]
+    List,
+    ActionPanel,
+}
+
+impl IssuesListFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::List => Self::ActionPanel,
+            Self::ActionPanel => Self::List,
+        };
+    }
+}
+
 /// LLM action type for agent operations (mirrors proto LlmAction)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LlmAction {
@@ -354,6 +371,10 @@ pub struct AppState {
     pub issue_detail_focus: IssueDetailFocus,
     pub action_panel_llm_action: LlmAction,
     pub action_panel_index: usize, // Selected item in action panel (0=VSCode, 1=Plan, 2=Impl, 3+=states)
+
+    // Issues list action panel state
+    pub issues_list_focus: IssuesListFocus,
+    pub issues_list_action_index: usize, // 0=Create, 1=Move, 2=Delete
 
     // Double-click detection for project grid
     pub last_click_time: Option<Instant>,

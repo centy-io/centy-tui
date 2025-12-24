@@ -430,6 +430,28 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Delete an issue
+    pub async fn delete_issue(&mut self, project_path: &str, issue_id: &str) -> Result<()> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::DeleteIssueRequest {
+            project_path: project_path.to_string(),
+            issue_id: issue_id.to_string(),
+        });
+
+        let response = client
+            .delete_issue(request)
+            .await
+            .map_err(|e| anyhow!("Failed to delete issue: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to delete issue: {}", inner.error));
+        }
+
+        Ok(())
+    }
+
     /// Create a new PR
     pub async fn create_pr(
         &mut self,

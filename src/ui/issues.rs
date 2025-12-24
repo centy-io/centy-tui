@@ -1,7 +1,7 @@
 //! Issues list and detail views
 
 use crate::app::App;
-use crate::state::IssueDetailFocus;
+use crate::state::{IssueDetailFocus, IssuesListFocus};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -12,6 +12,24 @@ use ratatui::{
 
 /// Draw the issues list
 pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
+    // Split area into content (left) and action panel (right)
+    let h_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(22)])
+        .split(area);
+
+    let list_area = h_chunks[0];
+    let action_area = h_chunks[1];
+
+    // Draw the issues list content
+    draw_issues_list_content(frame, list_area, app);
+
+    // Draw the action panel
+    draw_issues_list_action_panel(frame, action_area, app);
+}
+
+/// Draw the issues list content (left side)
+fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &App) {
     let sorted_issues = app.state.sorted_issues();
     let project_name = app
         .state
@@ -19,6 +37,12 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         .as_ref()
         .and_then(|p| p.split('/').next_back())
         .unwrap_or("Project");
+
+    // Border color based on focus
+    let border_color = match app.state.issues_list_focus {
+        IssuesListFocus::List => Color::Cyan,
+        IssuesListFocus::ActionPanel => Color::DarkGray,
+    };
 
     // Header with sort info
     let sort_label = format!(
@@ -55,7 +79,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
                 Block::default()
                     .title(format!(" Issues - {} ", project_name))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(Style::default().fg(border_color)),
             );
         frame.render_widget(content, area);
         return;
@@ -120,10 +144,103 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         Block::default()
             .title(format!(" Issues - {} ", project_name))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
+            .border_style(Style::default().fg(border_color)),
     );
 
     frame.render_widget(list, chunks[1]);
+}
+
+/// Draw the issues list action panel (right side)
+fn draw_issues_list_action_panel(frame: &mut Frame, area: Rect, app: &App) {
+    // Border color based on focus
+    let border_color = match app.state.issues_list_focus {
+        IssuesListFocus::ActionPanel => Color::Cyan,
+        IssuesListFocus::List => Color::DarkGray,
+    };
+
+    let is_focused = matches!(app.state.issues_list_focus, IssuesListFocus::ActionPanel);
+    let selected_index = app.state.issues_list_action_index;
+    let has_selection = !app.state.sorted_issues().is_empty();
+
+    let mut content = vec![Line::from("")];
+
+    // Item 0: Create Issue
+    let create_prefix = if is_focused && selected_index == 0 {
+        Span::styled(" ▸ ", Style::default().fg(Color::Cyan))
+    } else {
+        Span::raw("   ")
+    };
+    content.push(Line::from(vec![
+        create_prefix,
+        Span::styled(
+            "Create Issue",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    content.push(Line::from(""));
+
+    // Item 1: Move Issue
+    let move_prefix = if is_focused && selected_index == 1 {
+        Span::styled(" ▸ ", Style::default().fg(Color::Cyan))
+    } else {
+        Span::raw("   ")
+    };
+    let move_style = if has_selection {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    content.push(Line::from(vec![
+        move_prefix,
+        Span::styled("Move Issue", move_style),
+    ]));
+
+    // Item 2: Delete Issue
+    let delete_prefix = if is_focused && selected_index == 2 {
+        Span::styled(" ▸ ", Style::default().fg(Color::Cyan))
+    } else {
+        Span::raw("   ")
+    };
+    let delete_style = if has_selection {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    content.push(Line::from(vec![
+        delete_prefix,
+        Span::styled("Delete Issue", delete_style),
+    ]));
+
+    // Help text
+    content.push(Line::from(""));
+    content.push(Line::from(Span::styled(
+        "─".repeat(18),
+        Style::default().fg(Color::DarkGray),
+    )));
+    content.push(Line::from(Span::styled(
+        " j/k navigate",
+        Style::default().fg(Color::DarkGray),
+    )));
+    content.push(Line::from(Span::styled(
+        " Enter to select",
+        Style::default().fg(Color::DarkGray),
+    )));
+    content.push(Line::from(Span::styled(
+        " Tab to switch",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let panel = Paragraph::new(content).block(
+        Block::default()
+            .title(" Actions ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color)),
+    );
+
+    frame.render_widget(panel, area);
 }
 
 /// Draw issue detail view

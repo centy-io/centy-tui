@@ -2,7 +2,8 @@
 
 use crate::daemon::DaemonClient;
 use crate::state::{
-    AppState, IssueDetailFocus, LlmAction, LogoStyle, SplashState, View, ViewParams,
+    AppState, IssueDetailFocus, IssuesListFocus, LlmAction, LogoStyle, SplashState, View,
+    ViewParams,
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -271,29 +272,52 @@ impl App {
 
     /// Handle keys in Issues view
     async fn handle_issues_key(&mut self, key: KeyEvent) -> Result<()> {
+        const TOTAL_ACTIONS: usize = 3; // Create, Move, Delete
+
         match key.code {
+            // Tab: Switch focus between list and action panel
+            KeyCode::Tab => {
+                self.state.issues_list_focus.toggle();
+            }
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state
-                    .move_selection_down(self.state.sorted_issues().len());
+                if matches!(self.state.issues_list_focus, IssuesListFocus::List) {
+                    self.state
+                        .move_selection_down(self.state.sorted_issues().len());
+                } else {
+                    // Navigate down in action panel
+                    self.state.issues_list_action_index =
+                        (self.state.issues_list_action_index + 1) % TOTAL_ACTIONS;
+                }
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                self.state.move_selection_up();
+                if matches!(self.state.issues_list_focus, IssuesListFocus::List) {
+                    self.state.move_selection_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.issues_list_action_index =
+                        (self.state.issues_list_action_index + TOTAL_ACTIONS - 1) % TOTAL_ACTIONS;
+                }
             }
             KeyCode::Enter => {
-                let issue_id = self
-                    .state
-                    .sorted_issues()
-                    .get(self.state.selected_index)
-                    .map(|issue| issue.id.clone());
-                if let Some(id) = issue_id {
-                    self.state.selected_issue_id = Some(id.clone());
-                    self.navigate(
-                        View::IssueDetail,
-                        ViewParams {
-                            issue_id: Some(id),
-                            ..Default::default()
-                        },
-                    );
+                if matches!(self.state.issues_list_focus, IssuesListFocus::ActionPanel) {
+                    self.execute_issues_list_action().await?;
+                } else {
+                    // Open issue detail
+                    let issue_id = self
+                        .state
+                        .sorted_issues()
+                        .get(self.state.selected_index)
+                        .map(|issue| issue.id.clone());
+                    if let Some(id) = issue_id {
+                        self.state.selected_issue_id = Some(id.clone());
+                        self.navigate(
+                            View::IssueDetail,
+                            ViewParams {
+                                issue_id: Some(id),
+                                ..Default::default()
+                            },
+                        );
+                    }
                 }
             }
             KeyCode::Char('n') => {
@@ -324,10 +348,82 @@ impl App {
                 }
             }
             KeyCode::Esc | KeyCode::Backspace => {
+                // Reset focus state when leaving
+                self.state.issues_list_focus = IssuesListFocus::List;
+                self.state.issues_list_action_index = 0;
                 self.go_back();
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    /// Execute action based on current issues list action panel selection
+    async fn execute_issues_list_action(&mut self) -> Result<()> {
+        let index = self.state.issues_list_action_index;
+
+        match index {
+            0 => {
+                // Create: Navigate to IssueCreate view
+                self.navigate(View::IssueCreate, ViewParams::default());
+            }
+            1 => {
+                // Move: Not yet implemented
+                self.status_message = Some("Move issue: Not yet implemented".to_string());
+            }
+            2 => {
+                // Delete: Delete the selected issue
+                self.delete_selected_issue().await?;
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Delete the selected issue from the issues list
+    async fn delete_selected_issue(&mut self) -> Result<()> {
+        let project_path = match &self.state.selected_project_path {
+            Some(path) => path.clone(),
+            None => {
+                self.status_message = Some("No project selected".to_string());
+                return Ok(());
+            }
+        };
+
+        // Get the selected issue ID from the sorted list
+        let issue_id = {
+            let sorted = self.state.sorted_issues();
+            sorted.get(self.state.selected_index).map(|i| i.id.clone())
+        };
+
+        let issue_id = match issue_id {
+            Some(id) => id,
+            None => {
+                self.status_message = Some("No issue selected".to_string());
+                return Ok(());
+            }
+        };
+
+        // Delete the issue
+        match self.daemon.delete_issue(&project_path, &issue_id).await {
+            Ok(_) => {
+                // Refresh issues list
+                if let Ok(issues) = self.daemon.list_issues(&project_path).await {
+                    self.state.issues = issues;
+                    // Adjust selection if needed
+                    let max = self.state.sorted_issues().len();
+                    if self.state.selected_index >= max && max > 0 {
+                        self.state.selected_index = max - 1;
+                    }
+                }
+                self.status_message = Some("Issue deleted".to_string());
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Failed to delete issue: {}", e));
+            }
+        }
+
         Ok(())
     }
 
