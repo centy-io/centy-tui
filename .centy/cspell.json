@@ -15,7 +15,21 @@
     "updateStatusOnStart",
     "allowDirectEdits",
     "centyVersion",
-    "schemaVersion"
+    "schemaVersion",
+    "ratatui",
+    "crossterm",
+    "tokio",
+    "tonic",
+    "prost",
+    "serde",
+    "anyhow",
+    "thiserror",
+    "tracing",
+    "chrono",
+    "arboard",
+    "tarpaulin",
+    "clippy",
+    "rustfmt"
   ],
   "ignorePaths": [
     ".centy-manifest.json"
