@@ -87,18 +87,24 @@ async fn run_app<B: ratatui::backend::Backend>(
 
         // Handle events
         if event::poll(poll_duration)? {
-            if let Event::Key(key) = event::read()? {
-                // Global quit: q or Ctrl+C (but not during splash)
-                if !in_splash
-                    && (key.code == KeyCode::Char('q')
-                        || (key.code == KeyCode::Char('c')
-                            && key.modifiers.contains(KeyModifiers::CONTROL)))
-                {
-                    return Ok(());
-                }
+            match event::read()? {
+                Event::Key(key) => {
+                    // Global quit: q or Ctrl+C (but not during splash)
+                    if !in_splash
+                        && (key.code == KeyCode::Char('q')
+                            || (key.code == KeyCode::Char('c')
+                                && key.modifiers.contains(KeyModifiers::CONTROL)))
+                    {
+                        return Ok(());
+                    }
 
-                // Handle key event
-                app.handle_key(key).await?;
+                    // Handle key event
+                    app.handle_key(key).await?;
+                }
+                Event::Mouse(mouse) => {
+                    app.handle_mouse(mouse).await?;
+                }
+                _ => {}
             }
         }
 
