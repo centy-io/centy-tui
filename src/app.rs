@@ -3,7 +3,7 @@
 use crate::daemon::DaemonClient;
 use crate::state::{AppState, LogoStyle, SplashState, View, ViewParams};
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 /// Main application struct
 pub struct App {
@@ -98,6 +98,176 @@ impl App {
             View::Daemon => self.handle_daemon_key(key).await?,
         }
 
+        Ok(())
+    }
+
+    /// Handle a mouse event
+    pub async fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        // Clear any status messages on mouse interaction
+        self.copy_message = None;
+
+        // Handle sidebar clicks first (always active except splash)
+        if self.state.current_view != View::Splash && self.handle_sidebar_mouse(mouse).await? {
+            return Ok(());
+        }
+
+        // Handle view-specific mouse events
+        match self.state.current_view {
+            View::Splash => self.handle_splash_mouse(mouse).await?,
+            View::Projects => {
+                self.handle_list_mouse(mouse, self.state.projects.len())
+                    .await?
+            }
+            View::Issues => {
+                let len = self.state.sorted_issues().len();
+                self.handle_list_mouse(mouse, len).await?
+            }
+            View::IssueDetail => self.handle_scroll_mouse(mouse).await?,
+            View::IssueCreate | View::IssueEdit => self.handle_form_mouse(mouse).await?,
+            View::Prs => {
+                let len = self.state.sorted_prs().len();
+                self.handle_list_mouse(mouse, len).await?
+            }
+            View::PrDetail => self.handle_scroll_mouse(mouse).await?,
+            View::PrCreate | View::PrEdit => self.handle_form_mouse(mouse).await?,
+            View::Docs => self.handle_list_mouse(mouse, self.state.docs.len()).await?,
+            View::DocDetail => self.handle_scroll_mouse(mouse).await?,
+            View::DocCreate => self.handle_form_mouse(mouse).await?,
+            View::Config => self.handle_scroll_mouse(mouse).await?,
+            View::Daemon => {} // No mouse handling needed
+        }
+
+        Ok(())
+    }
+
+    /// Handle sidebar mouse clicks
+    /// Returns true if click was handled (consumed)
+    async fn handle_sidebar_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        // Sidebar is 20 chars wide, starts at x=0
+        // Border takes 1 char, title row takes 1 line
+        // Items start at y=2 (after border + title)
+        const SIDEBAR_WIDTH: u16 = 20;
+        const SIDEBAR_ITEMS_START_Y: u16 = 2;
+
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            if mouse.column < SIDEBAR_WIDTH && mouse.row >= SIDEBAR_ITEMS_START_Y {
+                let item_index = (mouse.row - SIDEBAR_ITEMS_START_Y) as usize;
+                let has_project = self.state.selected_project_path.is_some();
+
+                match item_index {
+                    0 => {
+                        self.state.sidebar_index = 0;
+                        self.navigate(View::Projects, ViewParams::default());
+                        return Ok(true);
+                    }
+                    1 if has_project => {
+                        self.state.sidebar_index = 1;
+                        self.navigate(View::Issues, ViewParams::default());
+                        return Ok(true);
+                    }
+                    2 if has_project => {
+                        self.state.sidebar_index = 2;
+                        self.navigate(View::Prs, ViewParams::default());
+                        return Ok(true);
+                    }
+                    3 if has_project => {
+                        self.state.sidebar_index = 3;
+                        self.navigate(View::Docs, ViewParams::default());
+                        return Ok(true);
+                    }
+                    4 if has_project => {
+                        self.state.sidebar_index = 4;
+                        self.navigate(View::Config, ViewParams::default());
+                        return Ok(true);
+                    }
+                    5 => {
+                        self.state.sidebar_index = 5;
+                        self.navigate(View::Daemon, ViewParams::default());
+                        return Ok(true);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Handle mouse events in list views (Projects, Issues, PRs, Docs)
+    async fn handle_list_mouse(&mut self, mouse: MouseEvent, list_len: usize) -> Result<()> {
+        // Main content starts at x=20 (after sidebar)
+        // List items start at y=1 (after border)
+        const MAIN_AREA_START_X: u16 = 20;
+        const LIST_ITEMS_START_Y: u16 = 1;
+
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                self.state.move_selection_up();
+            }
+            MouseEventKind::ScrollDown => {
+                self.state.move_selection_down(list_len);
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                if mouse.column >= MAIN_AREA_START_X && mouse.row >= LIST_ITEMS_START_Y {
+                    let clicked_index = (mouse.row - LIST_ITEMS_START_Y) as usize;
+                    if clicked_index < list_len {
+                        self.state.selected_index = clicked_index;
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle mouse events for scrollable content views (Detail views, Config)
+    async fn handle_scroll_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                self.state.scroll_up();
+            }
+            MouseEventKind::ScrollDown => {
+                self.state.scroll_down();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle mouse events in form views
+    async fn handle_form_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        // Form fields are laid out vertically in the main area
+        // Each field takes ~3 lines (label, input, gap)
+        const MAIN_AREA_START_X: u16 = 20;
+        const FORM_START_Y: u16 = 1;
+        const FIELD_HEIGHT: u16 = 3;
+
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            if mouse.column >= MAIN_AREA_START_X && mouse.row >= FORM_START_Y {
+                let field_index = ((mouse.row - FORM_START_Y) / FIELD_HEIGHT) as usize;
+                let max_fields = self.state.form_field_count();
+                if field_index < max_fields {
+                    self.state.active_form_field = field_index;
+                }
+            }
+        }
+
+        // Also handle scroll wheel in forms (for description field)
+        match mouse.kind {
+            MouseEventKind::ScrollUp => self.state.scroll_up(),
+            MouseEventKind::ScrollDown => self.state.scroll_down(),
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Handle mouse events in splash screen - click to skip
+    async fn handle_splash_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            if let Some(ref mut splash) = self.splash_state {
+                splash.skip();
+            }
+        }
         Ok(())
     }
 
