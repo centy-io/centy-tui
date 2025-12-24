@@ -65,9 +65,13 @@ async fn run_app<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
-        // Get terminal size for animation calculations
+        // Get terminal size for animation and grid calculations
         let term_size = terminal.size()?;
         let terminal_height = term_size.height;
+        let terminal_width = term_size.width;
+
+        // Update terminal size for grid calculations
+        app.terminal_size = Some((terminal_height, terminal_width));
 
         // Update splash animation if active
         let in_splash = app.in_splash();
@@ -103,8 +107,9 @@ async fn run_app<B: ratatui::backend::Backend>(
                 Event::Mouse(mouse) => {
                     app.handle_mouse(mouse).await?;
                 }
-                Event::Resize(_width, _height) => {
-                    // Terminal was resized
+                Event::Resize(width, height) => {
+                    // Update terminal size for grid calculations and pane recalculation
+                    app.terminal_size = Some((height, width));
                 }
                 _ => {}
             }
