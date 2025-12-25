@@ -47,12 +47,19 @@ arboard = "3"
 # Animation
 simple-easing = "1.0"
 
-[build-dependencies]
-tonic-build = "0.12"
+# Async trait (needed for trait abstraction)
+async-trait = "0.1"
 
 [dev-dependencies]
+# Testing framework utilities
+mockall = "0.13"
+tokio-test = "0.4"
+pretty_assertions = "1.4"
 # Git hooks for pre-commit validation
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+
+[build-dependencies]
+tonic-build = "0.12"
 
 [profile.release]
 lto = true

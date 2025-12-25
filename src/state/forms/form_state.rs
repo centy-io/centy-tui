@@ -437,3 +437,368 @@ impl Form for DocCreateForm {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{IssueMetadata, PrMetadata};
+    use chrono::Utc;
+    use std::collections::HashMap;
+
+    // Helper function to create test Issue
+    fn create_test_issue() -> Issue {
+        Issue {
+            id: "test-id".to_string(),
+            display_number: 1,
+            title: "Test Issue".to_string(),
+            description: "Test Description".to_string(),
+            metadata: IssueMetadata {
+                status: "open".to_string(),
+                priority: 2,
+                priority_label: Some("medium".to_string()),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                custom_fields: HashMap::new(),
+            },
+        }
+    }
+
+    // Helper function to create test PR
+    fn create_test_pr() -> PullRequest {
+        PullRequest {
+            id: "test-pr".to_string(),
+            display_number: 1,
+            title: "Test PR".to_string(),
+            description: "Test PR Description".to_string(),
+            metadata: PrMetadata {
+                status: "open".to_string(),
+                priority: 1,
+                priority_label: Some("high".to_string()),
+                source_branch: "feature".to_string(),
+                target_branch: "main".to_string(),
+                linked_issues: vec![],
+                reviewers: vec![],
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                merged_at: None,
+                closed_at: None,
+                custom_fields: HashMap::new(),
+            },
+        }
+    }
+
+    mod form_state_enum {
+        use super::*;
+
+        #[test]
+        fn test_default_is_none() {
+            let state = FormState::default();
+            assert!(matches!(state, FormState::None));
+        }
+
+        #[test]
+        fn test_next_field_on_none_is_noop() {
+            let mut state = FormState::None;
+            state.next_field(); // Should not panic
+        }
+
+        #[test]
+        fn test_prev_field_on_none_is_noop() {
+            let mut state = FormState::None;
+            state.prev_field(); // Should not panic
+        }
+
+        #[test]
+        fn test_get_active_field_mut_none_returns_none() {
+            let mut state = FormState::None;
+            assert!(state.get_active_field_mut().is_none());
+        }
+
+        #[test]
+        fn test_is_active_field_multiline_none_is_false() {
+            let state = FormState::None;
+            assert!(!state.is_active_field_multiline());
+        }
+
+        #[test]
+        fn test_issue_create_variant() {
+            let form = IssueCreateForm::new();
+            let state = FormState::IssueCreate(form);
+            assert!(matches!(state, FormState::IssueCreate(_)));
+        }
+
+        #[test]
+        fn test_next_field_cycles_through_form() {
+            let mut state = FormState::IssueCreate(IssueCreateForm::new());
+            if let FormState::IssueCreate(ref f) = state {
+                assert_eq!(f.active_field_index, 0);
+            }
+            state.next_field();
+            if let FormState::IssueCreate(ref f) = state {
+                assert_eq!(f.active_field_index, 1);
+            }
+        }
+
+        #[test]
+        fn test_get_active_field_mut_returns_field() {
+            let mut state = FormState::IssueCreate(IssueCreateForm::new());
+            let field = state.get_active_field_mut();
+            assert!(field.is_some());
+            assert_eq!(field.unwrap().name, "title");
+        }
+
+        #[test]
+        fn test_is_active_field_multiline_title_is_false() {
+            let state = FormState::IssueCreate(IssueCreateForm::new());
+            assert!(!state.is_active_field_multiline());
+        }
+
+        #[test]
+        fn test_is_active_field_multiline_description_is_true() {
+            let mut form = IssueCreateForm::new();
+            form.active_field_index = 1; // description
+            let state = FormState::IssueCreate(form);
+            assert!(state.is_active_field_multiline());
+        }
+    }
+
+    mod issue_create_form {
+        use super::*;
+
+        #[test]
+        fn test_new_has_correct_defaults() {
+            let form = IssueCreateForm::new();
+            assert_eq!(form.active_field_index, 0);
+            assert_eq!(form.selected_button, 3); // Create button
+            assert_eq!(form.title.name, "title");
+            assert_eq!(form.description.name, "description");
+            assert_eq!(form.priority.name, "priority");
+        }
+
+        #[test]
+        fn test_default_equals_new() {
+            let new = IssueCreateForm::new();
+            let default = IssueCreateForm::default();
+            assert_eq!(new.active_field_index, default.active_field_index);
+            assert_eq!(new.selected_button, default.selected_button);
+        }
+
+        #[test]
+        fn test_field_count() {
+            let form = IssueCreateForm::new();
+            assert_eq!(form.field_count(), 4);
+        }
+
+        #[test]
+        fn test_is_buttons_row_active() {
+            let mut form = IssueCreateForm::new();
+            assert!(!form.is_buttons_row_active());
+            form.active_field_index = 3;
+            assert!(form.is_buttons_row_active());
+        }
+
+        #[test]
+        fn test_next_button_wraps() {
+            let mut form = IssueCreateForm::new();
+            form.selected_button = 3;
+            form.next_button();
+            assert_eq!(form.selected_button, 0);
+        }
+
+        #[test]
+        fn test_prev_button_wraps() {
+            let mut form = IssueCreateForm::new();
+            form.selected_button = 0;
+            form.prev_button();
+            assert_eq!(form.selected_button, 3);
+        }
+
+        #[test]
+        fn test_next_field_cycles() {
+            let mut form = IssueCreateForm::new();
+            for _ in 0..4 {
+                form.next_field();
+            }
+            assert_eq!(form.active_field_index, 0); // Wrapped back
+        }
+
+        #[test]
+        fn test_prev_field_cycles() {
+            let mut form = IssueCreateForm::new();
+            form.prev_field();
+            assert_eq!(form.active_field_index, 3); // Wrapped to last
+        }
+
+        #[test]
+        fn test_get_field_returns_correct_fields() {
+            let form = IssueCreateForm::new();
+            assert_eq!(form.get_field(0).unwrap().name, "title");
+            assert_eq!(form.get_field(1).unwrap().name, "description");
+            assert_eq!(form.get_field(2).unwrap().name, "priority");
+            assert!(form.get_field(3).is_none()); // buttons row
+            assert!(form.get_field(4).is_none());
+        }
+
+        #[test]
+        fn test_set_active_field_clamps() {
+            let mut form = IssueCreateForm::new();
+            form.set_active_field(100);
+            assert_eq!(form.active_field_index, 3);
+        }
+    }
+
+    mod issue_edit_form {
+        use super::*;
+
+        #[test]
+        fn test_from_issue_loads_values() {
+            let issue = create_test_issue();
+            let form = IssueEditForm::from_issue(&issue);
+
+            assert_eq!(form.title.as_text(), "Test Issue");
+            assert_eq!(form.description.as_text(), "Test Description");
+            assert_eq!(form.status.as_text(), "open");
+            assert_eq!(form.active_field_index, 0);
+        }
+
+        #[test]
+        fn test_field_count() {
+            let issue = create_test_issue();
+            let form = IssueEditForm::from_issue(&issue);
+            assert_eq!(form.field_count(), 4);
+        }
+
+        #[test]
+        fn test_get_field_returns_correct_fields() {
+            let issue = create_test_issue();
+            let form = IssueEditForm::from_issue(&issue);
+            assert_eq!(form.get_field(0).unwrap().name, "title");
+            assert_eq!(form.get_field(1).unwrap().name, "description");
+            assert_eq!(form.get_field(2).unwrap().name, "priority");
+            assert_eq!(form.get_field(3).unwrap().name, "status");
+            assert!(form.get_field(4).is_none());
+        }
+    }
+
+    mod pr_create_form {
+        use super::*;
+
+        #[test]
+        fn test_new_has_correct_defaults() {
+            let form = PrCreateForm::new();
+            assert_eq!(form.active_field_index, 0);
+            assert_eq!(form.title.as_text(), "");
+            assert_eq!(form.source_branch.as_text(), "");
+            assert_eq!(form.target_branch.as_text(), "");
+        }
+
+        #[test]
+        fn test_field_count() {
+            let form = PrCreateForm::new();
+            assert_eq!(form.field_count(), 5);
+        }
+
+        #[test]
+        fn test_target_branch_or_default_empty() {
+            let form = PrCreateForm::new();
+            assert_eq!(form.target_branch_or_default(), "main");
+        }
+
+        #[test]
+        fn test_target_branch_or_default_with_value() {
+            let mut form = PrCreateForm::new();
+            form.target_branch.push_char('d');
+            form.target_branch.push_char('e');
+            form.target_branch.push_char('v');
+            assert_eq!(form.target_branch_or_default(), "dev");
+        }
+
+        #[test]
+        fn test_get_field_returns_correct_fields() {
+            let form = PrCreateForm::new();
+            assert_eq!(form.get_field(0).unwrap().name, "title");
+            assert_eq!(form.get_field(1).unwrap().name, "description");
+            assert_eq!(form.get_field(2).unwrap().name, "source_branch");
+            assert_eq!(form.get_field(3).unwrap().name, "target_branch");
+            assert_eq!(form.get_field(4).unwrap().name, "priority");
+            assert!(form.get_field(5).is_none());
+        }
+    }
+
+    mod pr_edit_form {
+        use super::*;
+
+        #[test]
+        fn test_from_pr_loads_values() {
+            let pr = create_test_pr();
+            let form = PrEditForm::from_pr(&pr);
+
+            assert_eq!(form.title.as_text(), "Test PR");
+            assert_eq!(form.description.as_text(), "Test PR Description");
+            assert_eq!(form.source_branch.as_text(), "feature");
+            assert_eq!(form.target_branch.as_text(), "main");
+            assert_eq!(form.status.as_text(), "open");
+        }
+
+        #[test]
+        fn test_field_count() {
+            let pr = create_test_pr();
+            let form = PrEditForm::from_pr(&pr);
+            assert_eq!(form.field_count(), 6);
+        }
+
+        #[test]
+        fn test_get_field_returns_correct_fields() {
+            let pr = create_test_pr();
+            let form = PrEditForm::from_pr(&pr);
+            assert_eq!(form.get_field(0).unwrap().name, "title");
+            assert_eq!(form.get_field(1).unwrap().name, "description");
+            assert_eq!(form.get_field(2).unwrap().name, "source_branch");
+            assert_eq!(form.get_field(3).unwrap().name, "target_branch");
+            assert_eq!(form.get_field(4).unwrap().name, "priority");
+            assert_eq!(form.get_field(5).unwrap().name, "status");
+            assert!(form.get_field(6).is_none());
+        }
+    }
+
+    mod doc_create_form {
+        use super::*;
+
+        #[test]
+        fn test_new_has_correct_defaults() {
+            let form = DocCreateForm::new();
+            assert_eq!(form.active_field_index, 0);
+            assert_eq!(form.title.as_text(), "");
+            assert_eq!(form.content.as_text(), "");
+            assert_eq!(form.slug.as_text(), "");
+        }
+
+        #[test]
+        fn test_field_count() {
+            let form = DocCreateForm::new();
+            assert_eq!(form.field_count(), 3);
+        }
+
+        #[test]
+        fn test_content_is_multiline() {
+            let form = DocCreateForm::new();
+            assert!(form.get_field(1).unwrap().is_multiline);
+        }
+
+        #[test]
+        fn test_get_field_returns_correct_fields() {
+            let form = DocCreateForm::new();
+            assert_eq!(form.get_field(0).unwrap().name, "title");
+            assert_eq!(form.get_field(1).unwrap().name, "content");
+            assert_eq!(form.get_field(2).unwrap().name, "slug");
+            assert!(form.get_field(3).is_none());
+        }
+
+        #[test]
+        fn test_set_active_field_clamps() {
+            let mut form = DocCreateForm::new();
+            form.set_active_field(100);
+            assert_eq!(form.active_field_index, 2);
+        }
+    }
+}

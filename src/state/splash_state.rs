@@ -87,3 +87,142 @@ impl SplashState {
         self.phase == SplashPhase::Complete
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod logo_style {
+        use super::*;
+
+        #[test]
+        fn test_default_is_block() {
+            let style = LogoStyle::default();
+            assert_eq!(style, LogoStyle::Block);
+        }
+
+        #[test]
+        fn test_all_variants_exist() {
+            // Just ensure all variants can be used
+            let _block = LogoStyle::Block;
+            let _elegant = LogoStyle::Elegant;
+            let _retro = LogoStyle::Retro;
+        }
+    }
+
+    mod splash_phase {
+        use super::*;
+
+        #[test]
+        fn test_phases_are_distinct() {
+            assert_ne!(SplashPhase::Display, SplashPhase::ScrollUp);
+            assert_ne!(SplashPhase::Display, SplashPhase::Complete);
+            assert_ne!(SplashPhase::ScrollUp, SplashPhase::Complete);
+        }
+    }
+
+    mod splash_state {
+        use super::*;
+
+        #[test]
+        fn test_new_starts_in_display_phase() {
+            let state = SplashState::new(LogoStyle::Block);
+            assert_eq!(state.phase, SplashPhase::Display);
+            assert_eq!(state.scroll_offset, 0.0);
+            assert_eq!(state.logo_style, LogoStyle::Block);
+        }
+
+        #[test]
+        fn test_new_with_different_styles() {
+            let elegant = SplashState::new(LogoStyle::Elegant);
+            assert_eq!(elegant.logo_style, LogoStyle::Elegant);
+
+            let retro = SplashState::new(LogoStyle::Retro);
+            assert_eq!(retro.logo_style, LogoStyle::Retro);
+        }
+
+        #[test]
+        fn test_skip_immediately_completes() {
+            let mut state = SplashState::new(LogoStyle::Block);
+            assert!(!state.is_complete());
+
+            state.skip();
+
+            assert!(state.is_complete());
+            assert_eq!(state.phase, SplashPhase::Complete);
+        }
+
+        #[test]
+        fn test_is_complete_returns_false_initially() {
+            let state = SplashState::new(LogoStyle::Block);
+            assert!(!state.is_complete());
+        }
+
+        #[test]
+        fn test_is_complete_returns_true_after_skip() {
+            let mut state = SplashState::new(LogoStyle::Block);
+            state.skip();
+            assert!(state.is_complete());
+        }
+
+        #[test]
+        fn test_update_stays_in_display_phase_initially() {
+            let mut state = SplashState::new(LogoStyle::Block);
+            // Call update immediately after creation
+            state.update(24);
+
+            // Should still be in display phase
+            assert_eq!(state.phase, SplashPhase::Display);
+            assert_eq!(state.scroll_offset, 0.0);
+        }
+
+        #[test]
+        fn test_multiple_skips_do_not_break() {
+            let mut state = SplashState::new(LogoStyle::Block);
+            state.skip();
+            state.skip();
+            state.skip();
+            assert!(state.is_complete());
+        }
+
+        #[test]
+        fn test_display_duration_constant() {
+            // Verify constant is accessible (compile-time check)
+            let duration = SplashState::DISPLAY_DURATION;
+            assert!(duration.as_millis() > 0);
+        }
+
+        #[test]
+        fn test_animation_duration_constant() {
+            // Verify constant is accessible (compile-time check)
+            let duration = SplashState::ANIMATION_DURATION;
+            assert!(duration.as_millis() > 0);
+        }
+
+        #[test]
+        fn test_scroll_offset_is_zero_in_display_phase() {
+            let mut state = SplashState::new(LogoStyle::Block);
+            state.update(40);
+            assert_eq!(state.scroll_offset, 0.0);
+        }
+
+        #[test]
+        fn test_update_with_different_terminal_heights() {
+            let mut state1 = SplashState::new(LogoStyle::Block);
+            let mut state2 = SplashState::new(LogoStyle::Block);
+
+            state1.update(24);
+            state2.update(100);
+
+            // Both should be in display phase initially
+            assert_eq!(state1.phase, SplashPhase::Display);
+            assert_eq!(state2.phase, SplashPhase::Display);
+        }
+
+        // Note: Testing the time-based transition is challenging without
+        // a way to mock time. The behavior can be verified by:
+        // - Checking Display phase immediately after creation (done above)
+        // - Checking Complete phase after skip() (done above)
+        // - Manual/integration testing for the animated transitions
+    }
+}

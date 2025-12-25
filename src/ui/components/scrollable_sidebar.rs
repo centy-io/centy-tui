@@ -121,34 +121,33 @@ pub fn render_scrollable_sidebar(
     let total_content_height: u16 = items.iter().map(|item| item.height()).sum();
 
     // Calculate visible items and scroll state
-    let (top_padding, first_visible, visible_count) = if total_content_height <= available_height
-        && config.center_content
-    {
-        // Content fits - center it, no scrolling needed
-        let padding = (available_height - total_content_height) / 2;
-        (padding, 0, total_items)
-    } else {
-        // Content doesn't fit - enable scrolling
-        let indicator_space = if config.show_scroll_indicators { 2 } else { 0 };
-        let usable_height = available_height.saturating_sub(indicator_space);
+    let (top_padding, first_visible, visible_count) =
+        if total_content_height <= available_height && config.center_content {
+            // Content fits - center it, no scrolling needed
+            let padding = (available_height - total_content_height) / 2;
+            (padding, 0, total_items)
+        } else {
+            // Content doesn't fit - enable scrolling
+            let indicator_space = if config.show_scroll_indicators { 2 } else { 0 };
+            let usable_height = available_height.saturating_sub(indicator_space);
 
-        // Find first visible item and count how many fit
-        let max_offset = calculate_max_scroll_offset(items, usable_height);
-        let clamped_offset = scroll_offset.min(max_offset);
+            // Find first visible item and count how many fit
+            let max_offset = calculate_max_scroll_offset(items, usable_height);
+            let clamped_offset = scroll_offset.min(max_offset);
 
-        // Count how many items fit from the offset
-        let mut height_used: u16 = 0;
-        let mut visible = 0;
-        for item in items.iter().skip(clamped_offset) {
-            if height_used + item.height() > usable_height {
-                break;
+            // Count how many items fit from the offset
+            let mut height_used: u16 = 0;
+            let mut visible = 0;
+            for item in items.iter().skip(clamped_offset) {
+                if height_used + item.height() > usable_height {
+                    break;
+                }
+                height_used += item.height();
+                visible += 1;
             }
-            height_used += item.height();
-            visible += 1;
-        }
 
-        (0, clamped_offset, visible.max(1)) // Always show at least 1 item
-    };
+            (0, clamped_offset, visible.max(1)) // Always show at least 1 item
+        };
 
     let can_scroll_up = first_visible > 0;
     let can_scroll_down = first_visible + visible_count < total_items;

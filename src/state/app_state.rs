@@ -1295,3 +1295,608 @@ impl AppState {
         !self.error_queue.is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod view_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_is_projects() {
+            let view = View::default();
+            assert_eq!(view, View::Projects);
+        }
+
+        #[test]
+        fn test_is_form_view_true_for_create_edit() {
+            assert!(View::IssueCreate.is_form_view());
+            assert!(View::IssueEdit.is_form_view());
+            assert!(View::PrCreate.is_form_view());
+            assert!(View::PrEdit.is_form_view());
+            assert!(View::DocCreate.is_form_view());
+        }
+
+        #[test]
+        fn test_is_form_view_false_for_other_views() {
+            assert!(!View::Projects.is_form_view());
+            assert!(!View::Issues.is_form_view());
+            assert!(!View::IssueDetail.is_form_view());
+            assert!(!View::Prs.is_form_view());
+            assert!(!View::PrDetail.is_form_view());
+            assert!(!View::Docs.is_form_view());
+            assert!(!View::DocDetail.is_form_view());
+            assert!(!View::Config.is_form_view());
+            assert!(!View::Splash.is_form_view());
+        }
+    }
+
+    mod issue_sort_field_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_is_priority() {
+            assert_eq!(IssueSortField::default(), IssueSortField::Priority);
+        }
+
+        #[test]
+        fn test_next_cycles_through_all() {
+            let mut field = IssueSortField::Priority;
+            field = field.next();
+            assert_eq!(field, IssueSortField::DisplayNumber);
+            field = field.next();
+            assert_eq!(field, IssueSortField::CreatedAt);
+            field = field.next();
+            assert_eq!(field, IssueSortField::UpdatedAt);
+            field = field.next();
+            assert_eq!(field, IssueSortField::Status);
+            field = field.next();
+            assert_eq!(field, IssueSortField::Priority);
+        }
+
+        #[test]
+        fn test_label_returns_correct_strings() {
+            assert_eq!(IssueSortField::Priority.label(), "Priority");
+            assert_eq!(IssueSortField::DisplayNumber.label(), "Number");
+            assert_eq!(IssueSortField::CreatedAt.label(), "Created");
+            assert_eq!(IssueSortField::UpdatedAt.label(), "Updated");
+            assert_eq!(IssueSortField::Status.label(), "Status");
+        }
+    }
+
+    mod pr_sort_field_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_is_priority() {
+            assert_eq!(PrSortField::default(), PrSortField::Priority);
+        }
+
+        #[test]
+        fn test_next_cycles_through_all() {
+            let mut field = PrSortField::Priority;
+            field = field.next();
+            assert_eq!(field, PrSortField::DisplayNumber);
+            field = field.next();
+            assert_eq!(field, PrSortField::CreatedAt);
+            field = field.next();
+            assert_eq!(field, PrSortField::UpdatedAt);
+            field = field.next();
+            assert_eq!(field, PrSortField::Status);
+            field = field.next();
+            assert_eq!(field, PrSortField::Priority);
+        }
+
+        #[test]
+        fn test_label_returns_correct_strings() {
+            assert_eq!(PrSortField::Priority.label(), "Priority");
+            assert_eq!(PrSortField::DisplayNumber.label(), "Number");
+        }
+    }
+
+    mod sort_direction_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_is_asc() {
+            assert_eq!(SortDirection::default(), SortDirection::Asc);
+        }
+
+        #[test]
+        fn test_toggle_asc_to_desc() {
+            let dir = SortDirection::Asc;
+            assert_eq!(dir.toggle(), SortDirection::Desc);
+        }
+
+        #[test]
+        fn test_toggle_desc_to_asc() {
+            let dir = SortDirection::Desc;
+            assert_eq!(dir.toggle(), SortDirection::Asc);
+        }
+
+        #[test]
+        fn test_symbol_returns_arrows() {
+            assert_eq!(SortDirection::Asc.symbol(), "↑");
+            assert_eq!(SortDirection::Desc.symbol(), "↓");
+        }
+    }
+
+    mod focus_toggle_tests {
+        use super::*;
+
+        #[test]
+        fn test_issue_detail_focus_toggle() {
+            let mut focus = IssueDetailFocus::Content;
+            focus.toggle();
+            assert_eq!(focus, IssueDetailFocus::ActionPanel);
+            focus.toggle();
+            assert_eq!(focus, IssueDetailFocus::Content);
+        }
+
+        #[test]
+        fn test_issues_list_focus_toggle() {
+            let mut focus = IssuesListFocus::List;
+            focus.toggle();
+            assert_eq!(focus, IssuesListFocus::ActionPanel);
+            focus.toggle();
+            assert_eq!(focus, IssuesListFocus::List);
+        }
+
+        #[test]
+        fn test_prs_list_focus_toggle() {
+            let mut focus = PrsListFocus::List;
+            focus.toggle();
+            assert_eq!(focus, PrsListFocus::ActionPanel);
+        }
+
+        #[test]
+        fn test_pr_detail_focus_toggle() {
+            let mut focus = PrDetailFocus::Content;
+            focus.toggle();
+            assert_eq!(focus, PrDetailFocus::ActionPanel);
+        }
+
+        #[test]
+        fn test_docs_list_focus_toggle() {
+            let mut focus = DocsListFocus::List;
+            focus.toggle();
+            assert_eq!(focus, DocsListFocus::ActionPanel);
+        }
+
+        #[test]
+        fn test_doc_detail_focus_toggle() {
+            let mut focus = DocDetailFocus::Content;
+            focus.toggle();
+            assert_eq!(focus, DocDetailFocus::ActionPanel);
+        }
+    }
+
+    mod llm_action_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_is_plan() {
+            assert_eq!(LlmAction::default(), LlmAction::Plan);
+        }
+
+        #[test]
+        fn test_toggle() {
+            let mut action = LlmAction::Plan;
+            action.toggle();
+            assert_eq!(action, LlmAction::Implement);
+            action.toggle();
+            assert_eq!(action, LlmAction::Plan);
+        }
+
+        #[test]
+        fn test_label() {
+            assert_eq!(LlmAction::Plan.label(), "Plan");
+            assert_eq!(LlmAction::Implement.label(), "Implement");
+        }
+
+        #[test]
+        fn test_as_proto_value() {
+            assert_eq!(LlmAction::Plan.as_proto_value(), 1);
+            assert_eq!(LlmAction::Implement.as_proto_value(), 2);
+        }
+    }
+
+    mod action_category_tests {
+        use super::*;
+
+        #[test]
+        fn test_from_proto() {
+            assert_eq!(ActionCategory::from_proto(1), ActionCategory::Crud);
+            assert_eq!(ActionCategory::from_proto(2), ActionCategory::Mode);
+            assert_eq!(ActionCategory::from_proto(3), ActionCategory::Status);
+            assert_eq!(ActionCategory::from_proto(4), ActionCategory::External);
+            assert_eq!(ActionCategory::from_proto(0), ActionCategory::Unspecified);
+            assert_eq!(ActionCategory::from_proto(99), ActionCategory::Unspecified);
+        }
+
+        #[test]
+        fn test_label() {
+            assert_eq!(ActionCategory::Unspecified.label(), "Other");
+            assert_eq!(ActionCategory::Crud.label(), "Actions");
+            assert_eq!(ActionCategory::Mode.label(), "Mode");
+            assert_eq!(ActionCategory::Status.label(), "Status");
+            assert_eq!(ActionCategory::External.label(), "External");
+        }
+    }
+
+    mod project_tests {
+        use super::*;
+
+        #[test]
+        fn test_display_name_prefers_user_title() {
+            let project = Project {
+                path: "/test".to_string(),
+                name: "project".to_string(),
+                project_title: Some("Project Title".to_string()),
+                user_title: Some("My Custom Name".to_string()),
+                is_favorite: false,
+                is_archived: false,
+                initialized: true,
+                issue_count: 0,
+                doc_count: 0,
+                pr_count: 0,
+                organization_slug: None,
+                organization_name: None,
+            };
+            assert_eq!(project.display_name(), "My Custom Name");
+        }
+
+        #[test]
+        fn test_display_name_falls_back_to_project_title() {
+            let project = Project {
+                path: "/test".to_string(),
+                name: "project".to_string(),
+                project_title: Some("Project Title".to_string()),
+                user_title: None,
+                is_favorite: false,
+                is_archived: false,
+                initialized: true,
+                issue_count: 0,
+                doc_count: 0,
+                pr_count: 0,
+                organization_slug: None,
+                organization_name: None,
+            };
+            assert_eq!(project.display_name(), "Project Title");
+        }
+
+        #[test]
+        fn test_display_name_falls_back_to_name() {
+            let project = Project {
+                path: "/test".to_string(),
+                name: "project-name".to_string(),
+                project_title: None,
+                user_title: None,
+                is_favorite: false,
+                is_archived: false,
+                initialized: true,
+                issue_count: 0,
+                doc_count: 0,
+                pr_count: 0,
+                organization_slug: None,
+                organization_name: None,
+            };
+            assert_eq!(project.display_name(), "project-name");
+        }
+    }
+
+    mod issue_tests {
+        use super::*;
+
+        fn create_test_issue(priority: u32, status: &str) -> Issue {
+            Issue {
+                id: "test-id".to_string(),
+                display_number: 1,
+                title: "Test".to_string(),
+                description: "Desc".to_string(),
+                metadata: IssueMetadata {
+                    status: status.to_string(),
+                    priority,
+                    priority_label: None,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    custom_fields: HashMap::new(),
+                },
+            }
+        }
+
+        #[test]
+        fn test_priority_color() {
+            assert_eq!(create_test_issue(1, "open").priority_color(), "red");
+            assert_eq!(create_test_issue(2, "open").priority_color(), "yellow");
+            assert_eq!(create_test_issue(3, "open").priority_color(), "green");
+        }
+
+        #[test]
+        fn test_priority_label_default() {
+            assert_eq!(create_test_issue(1, "open").priority_label(), "high");
+            assert_eq!(create_test_issue(2, "open").priority_label(), "med");
+            assert_eq!(create_test_issue(3, "open").priority_label(), "low");
+        }
+    }
+
+    mod app_state_tests {
+        use super::*;
+
+        fn create_default_state() -> AppState {
+            AppState::default()
+        }
+
+        #[test]
+        fn test_default_view_is_projects() {
+            let state = create_default_state();
+            // View::default() is Projects (see View enum with #[default])
+            assert_eq!(state.current_view, View::Projects);
+        }
+
+        #[test]
+        fn test_move_selection_down() {
+            let mut state = create_default_state();
+            state.selected_index = 0;
+            state.move_selection_down(5);
+            assert_eq!(state.selected_index, 1);
+        }
+
+        #[test]
+        fn test_move_selection_down_at_max() {
+            let mut state = create_default_state();
+            state.selected_index = 4;
+            state.move_selection_down(5);
+            assert_eq!(state.selected_index, 4); // Stays at max
+        }
+
+        #[test]
+        fn test_move_selection_up() {
+            let mut state = create_default_state();
+            state.selected_index = 3;
+            state.move_selection_up();
+            assert_eq!(state.selected_index, 2);
+        }
+
+        #[test]
+        fn test_move_selection_up_at_zero() {
+            let mut state = create_default_state();
+            state.selected_index = 0;
+            state.move_selection_up();
+            assert_eq!(state.selected_index, 0);
+        }
+
+        #[test]
+        fn test_scroll_down() {
+            let mut state = create_default_state();
+            state.scroll_offset = 0;
+            state.scroll_down();
+            assert_eq!(state.scroll_offset, 1);
+        }
+
+        #[test]
+        fn test_scroll_up() {
+            let mut state = create_default_state();
+            state.scroll_offset = 5;
+            state.scroll_up();
+            assert_eq!(state.scroll_offset, 4);
+        }
+
+        #[test]
+        fn test_scroll_up_at_zero() {
+            let mut state = create_default_state();
+            state.scroll_offset = 0;
+            state.scroll_up();
+            assert_eq!(state.scroll_offset, 0);
+        }
+
+        #[test]
+        fn test_scroll_down_page() {
+            let mut state = create_default_state();
+            state.scroll_offset = 0;
+            state.scroll_down_page();
+            assert_eq!(state.scroll_offset, 10);
+        }
+
+        #[test]
+        fn test_scroll_up_page() {
+            let mut state = create_default_state();
+            state.scroll_offset = 15;
+            state.scroll_up_page();
+            assert_eq!(state.scroll_offset, 5);
+        }
+
+        #[test]
+        fn test_scroll_up_page_clamps_at_zero() {
+            let mut state = create_default_state();
+            state.scroll_offset = 3;
+            state.scroll_up_page();
+            assert_eq!(state.scroll_offset, 0);
+        }
+
+        #[test]
+        fn test_form_field_count_for_views() {
+            let mut state = create_default_state();
+
+            state.current_view = View::IssueCreate;
+            assert_eq!(state.form_field_count(), 4);
+
+            state.current_view = View::IssueEdit;
+            assert_eq!(state.form_field_count(), 4);
+
+            state.current_view = View::PrCreate;
+            assert_eq!(state.form_field_count(), 5);
+
+            state.current_view = View::PrEdit;
+            assert_eq!(state.form_field_count(), 6);
+
+            state.current_view = View::DocCreate;
+            assert_eq!(state.form_field_count(), 3);
+
+            state.current_view = View::Projects;
+            assert_eq!(state.form_field_count(), 1);
+        }
+
+        #[test]
+        fn test_next_form_field_cycles() {
+            let mut state = create_default_state();
+            state.current_view = View::IssueCreate;
+            state.active_form_field = 3;
+            state.next_form_field();
+            assert_eq!(state.active_form_field, 0);
+        }
+
+        #[test]
+        fn test_prev_form_field_cycles() {
+            let mut state = create_default_state();
+            state.current_view = View::IssueCreate;
+            state.active_form_field = 0;
+            state.prev_form_field();
+            assert_eq!(state.active_form_field, 3);
+        }
+
+        #[test]
+        fn test_form_input_char_appends_to_title() {
+            let mut state = create_default_state();
+            state.current_view = View::IssueCreate;
+            state.active_form_field = 0;
+            state.form_input_char('a', false);
+            state.form_input_char('b', false);
+            assert_eq!(state.form_title, "ab");
+        }
+
+        #[test]
+        fn test_form_input_char_with_shift() {
+            let mut state = create_default_state();
+            state.current_view = View::IssueCreate;
+            state.active_form_field = 0;
+            state.form_input_char('a', true);
+            assert_eq!(state.form_title, "A");
+        }
+
+        #[test]
+        fn test_form_backspace() {
+            let mut state = create_default_state();
+            state.current_view = View::IssueCreate;
+            state.active_form_field = 0;
+            state.form_title = "abc".to_string();
+            state.form_backspace();
+            assert_eq!(state.form_title, "ab");
+        }
+
+        #[test]
+        fn test_clear_form() {
+            let mut state = create_default_state();
+            state.form_title = "Title".to_string();
+            state.form_description = "Desc".to_string();
+            state.form_priority = 2;
+            state.active_form_field = 2;
+
+            state.clear_form();
+
+            assert_eq!(state.form_title, "");
+            assert_eq!(state.form_description, "");
+            assert_eq!(state.form_priority, 0);
+            assert_eq!(state.active_form_field, 0);
+        }
+
+        #[test]
+        fn test_action_panel_up() {
+            let mut state = create_default_state();
+            state.action_panel_selected_index = 3;
+            state.action_panel_up();
+            assert_eq!(state.action_panel_selected_index, 2);
+        }
+
+        #[test]
+        fn test_action_panel_up_at_zero() {
+            let mut state = create_default_state();
+            state.action_panel_selected_index = 0;
+            state.action_panel_up();
+            assert_eq!(state.action_panel_selected_index, 0);
+        }
+
+        #[test]
+        fn test_action_panel_down() {
+            let mut state = create_default_state();
+            state.current_actions.actions = vec![
+                EntityAction {
+                    id: "1".to_string(),
+                    label: "One".to_string(),
+                    category: ActionCategory::Crud,
+                    enabled: true,
+                    disabled_reason: String::new(),
+                    destructive: false,
+                    keyboard_shortcut: String::new(),
+                },
+                EntityAction {
+                    id: "2".to_string(),
+                    label: "Two".to_string(),
+                    category: ActionCategory::Crud,
+                    enabled: true,
+                    disabled_reason: String::new(),
+                    destructive: false,
+                    keyboard_shortcut: String::new(),
+                },
+            ];
+            state.action_panel_selected_index = 0;
+            state.action_panel_down();
+            assert_eq!(state.action_panel_selected_index, 1);
+        }
+
+        #[test]
+        fn test_action_panel_down_at_max() {
+            let mut state = create_default_state();
+            state.current_actions.actions = vec![EntityAction {
+                id: "1".to_string(),
+                label: "One".to_string(),
+                category: ActionCategory::Crud,
+                enabled: true,
+                disabled_reason: String::new(),
+                destructive: false,
+                keyboard_shortcut: String::new(),
+            }];
+            state.action_panel_selected_index = 0;
+            state.action_panel_down();
+            assert_eq!(state.action_panel_selected_index, 0);
+        }
+
+        #[test]
+        fn test_error_queue_push() {
+            let mut state = create_default_state();
+            assert!(!state.has_errors());
+            state.push_error("Error 1".to_string());
+            assert!(state.has_errors());
+        }
+
+        #[test]
+        fn test_error_queue_current() {
+            let mut state = create_default_state();
+            state.push_error("Error 1".to_string());
+            state.push_error("Error 2".to_string());
+            assert_eq!(state.current_error(), Some(&"Error 1".to_string()));
+        }
+
+        #[test]
+        fn test_error_queue_dismiss() {
+            let mut state = create_default_state();
+            state.push_error("Error 1".to_string());
+            state.push_error("Error 2".to_string());
+            state.dismiss_error();
+            assert_eq!(state.current_error(), Some(&"Error 2".to_string()));
+        }
+
+        #[test]
+        fn test_is_action_panel_focused() {
+            let mut state = create_default_state();
+
+            state.current_view = View::Issues;
+            state.issues_list_focus = IssuesListFocus::List;
+            assert!(!state.is_action_panel_focused());
+
+            state.issues_list_focus = IssuesListFocus::ActionPanel;
+            assert!(state.is_action_panel_focused());
+        }
+    }
+}

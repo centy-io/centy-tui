@@ -61,3 +61,107 @@ impl TuiConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = TuiConfig::default();
+        assert!(config.issue_sort_field.is_none());
+        assert!(config.issue_sort_direction.is_none());
+        assert!(config.pr_sort_field.is_none());
+        assert!(config.pr_sort_direction.is_none());
+        assert!(config.show_closed_issues.is_none());
+        assert!(config.show_merged_prs.is_none());
+        assert!(config.daemon_address.is_none());
+    }
+
+    #[test]
+    fn test_serialization() {
+        let config = TuiConfig {
+            issue_sort_field: Some("priority".to_string()),
+            issue_sort_direction: Some("asc".to_string()),
+            pr_sort_field: Some("created".to_string()),
+            pr_sort_direction: Some("desc".to_string()),
+            show_closed_issues: Some(true),
+            show_merged_prs: Some(false),
+            daemon_address: Some("http://localhost:50051".to_string()),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: TuiConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.issue_sort_field, Some("priority".to_string()));
+        assert_eq!(parsed.issue_sort_direction, Some("asc".to_string()));
+        assert_eq!(parsed.pr_sort_field, Some("created".to_string()));
+        assert_eq!(parsed.pr_sort_direction, Some("desc".to_string()));
+        assert_eq!(parsed.show_closed_issues, Some(true));
+        assert_eq!(parsed.show_merged_prs, Some(false));
+        assert_eq!(
+            parsed.daemon_address,
+            Some("http://localhost:50051".to_string())
+        );
+    }
+
+    #[test]
+    fn test_partial_serialization() {
+        let config = TuiConfig {
+            issue_sort_field: Some("priority".to_string()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: TuiConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.issue_sort_field, Some("priority".to_string()));
+        assert!(parsed.issue_sort_direction.is_none());
+    }
+
+    #[test]
+    fn test_deserialize_from_empty_json() {
+        let json = "{}";
+        let parsed: TuiConfig = serde_json::from_str(json).unwrap();
+        assert!(parsed.issue_sort_field.is_none());
+    }
+
+    #[test]
+    fn test_deserialize_with_extra_fields() {
+        // Should ignore unknown fields
+        let json = r#"{"issue_sort_field": "priority", "unknown_field": "value"}"#;
+        let parsed: TuiConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.issue_sort_field, Some("priority".to_string()));
+    }
+
+    #[test]
+    fn test_config_path_returns_option() {
+        // Just test that the function doesn't panic
+        let _path = TuiConfig::config_path();
+    }
+
+    #[test]
+    fn test_load_returns_default_when_no_file() {
+        // Load should return default config when file doesn't exist
+        // This test may pass or fail depending on whether config file exists
+        let result = TuiConfig::load();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_config_clone() {
+        let config = TuiConfig {
+            issue_sort_field: Some("priority".to_string()),
+            ..Default::default()
+        };
+        let cloned = config.clone();
+        assert_eq!(config.issue_sort_field, cloned.issue_sort_field);
+    }
+
+    #[test]
+    fn test_config_debug() {
+        let config = TuiConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("TuiConfig"));
+    }
+}

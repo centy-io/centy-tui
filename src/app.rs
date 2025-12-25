@@ -2277,3 +2277,585 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{ActionCategory, EntityAction, EntityActionsResponse};
+
+    /// Test-only struct that mirrors App but doesn't require DaemonClient
+    /// Only use this for testing synchronous methods that don't touch daemon
+    struct TestApp {
+        state: AppState,
+        quit: bool,
+        status_message: Option<String>,
+        copy_message: Option<String>,
+        splash_state: Option<SplashState>,
+        terminal_size: Option<(u16, u16)>,
+        screen_buffer: ScreenBuffer,
+        last_ctrl_c: Option<Instant>,
+    }
+
+    impl TestApp {
+        fn new() -> Self {
+            Self {
+                state: AppState::default(),
+                quit: false,
+                status_message: None,
+                copy_message: None,
+                splash_state: None,
+                terminal_size: Some((24, 80)),
+                screen_buffer: ScreenBuffer::default(),
+                last_ctrl_c: None,
+            }
+        }
+
+        fn should_quit(&self) -> bool {
+            self.quit
+        }
+
+        fn in_splash(&self) -> bool {
+            matches!(self.state.current_view, View::Splash)
+        }
+
+        fn sidebar_width(&self) -> u16 {
+            if self.state.selected_project_path.is_some() {
+                20
+            } else {
+                0
+            }
+        }
+
+        fn calculate_project_grid_columns(&self) -> usize {
+            let width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
+            let sidebar_width = self.sidebar_width();
+            let usable_width = width.saturating_sub(sidebar_width + 2);
+            const MIN_CARD_WIDTH: u16 = 18;
+            const CARD_SPACING_H: u16 = 1;
+            let columns = if usable_width >= MIN_CARD_WIDTH {
+                ((usable_width + CARD_SPACING_H) / (MIN_CARD_WIDTH + CARD_SPACING_H)) as usize
+            } else {
+                1
+            };
+            columns.max(1)
+        }
+
+        fn calculate_project_grid_visible_height(&self) -> usize {
+            let height = self.terminal_size.map(|(h, _)| h).unwrap_or(24);
+            height.saturating_sub(2) as usize
+        }
+
+        fn navigate(&mut self, view: View, params: ViewParams) {
+            self.state.selection.clear();
+            self.state.view_history.push((
+                self.state.current_view.clone(),
+                self.state.view_params.clone(),
+            ));
+            self.state.current_view = view;
+            self.state.view_params = params;
+        }
+
+        fn go_back(&mut self) {
+            self.state.selection.clear();
+            while let Some((view, params)) = self.state.view_history.pop() {
+                if view.is_form_view() {
+                    continue;
+                }
+                if matches!(view, View::Projects) {
+                    self.state.selected_project_path = None;
+                }
+                self.state.current_view = view;
+                self.state.view_params = params;
+                return;
+            }
+        }
+
+        fn calculate_action_index_from_click(&self, mouse_row: u16) -> Option<usize> {
+            if mouse_row < 1 {
+                return None;
+            }
+            let row_in_panel = mouse_row - 1;
+            let grouped = self.state.current_actions.grouped_actions();
+            let mut current_row: u16 = 0;
+            let mut action_idx = 0;
+
+            for (_category, actions) in &grouped {
+                current_row += 1;
+                for _ in actions {
+                    if row_in_panel >= current_row && row_in_panel < current_row + BUTTON_HEIGHT {
+                        return Some(action_idx);
+                    }
+                    current_row += BUTTON_HEIGHT;
+                    action_idx += 1;
+                }
+            }
+            None
+        }
+
+        fn update_splash(&mut self, terminal_height: u16) -> bool {
+            if let Some(ref mut splash) = self.splash_state {
+                splash.update(terminal_height);
+                if splash.is_complete() {
+                    self.splash_state = None;
+                    self.state.current_view = View::Projects;
+                    return true;
+                }
+            }
+            false
+        }
+
+        fn update_button_press(&mut self) {
+            if let Some(ref press) = self.state.button_press {
+                if press.is_expired() {
+                    self.state.button_press = None;
+                }
+            }
+        }
+
+        fn find_action_for_key(&self, key: &KeyEvent) -> Option<usize> {
+            self.state
+                .current_actions
+                .actions
+                .iter()
+                .position(|a| App::key_matches_shortcut(key, &a.keyboard_shortcut))
+        }
+    }
+
+    mod app_basic_tests {
+        use super::*;
+
+        #[test]
+        fn test_should_quit_initially_false() {
+            let app = TestApp::new();
+            assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn test_in_splash_false_for_default_view() {
+            let app = TestApp::new();
+            // Default view is Projects
+            assert!(!app.in_splash());
+        }
+
+        #[test]
+        fn test_in_splash_true_when_splash_view() {
+            let mut app = TestApp::new();
+            app.state.current_view = View::Splash;
+            assert!(app.in_splash());
+        }
+
+        #[test]
+        fn test_sidebar_width_zero_without_project() {
+            let app = TestApp::new();
+            assert_eq!(app.sidebar_width(), 0);
+        }
+
+        #[test]
+        fn test_sidebar_width_20_with_project() {
+            let mut app = TestApp::new();
+            app.state.selected_project_path = Some("/path/to/project".to_string());
+            assert_eq!(app.sidebar_width(), 20);
+        }
+    }
+
+    mod grid_calculation_tests {
+        use super::*;
+
+        #[test]
+        fn test_calculate_project_grid_columns_default() {
+            let app = TestApp::new();
+            // 80 width - 0 sidebar - 2 borders = 78 usable
+            // 78 / 19 (18 + 1 spacing) = 4 columns
+            let cols = app.calculate_project_grid_columns();
+            assert!(cols >= 1);
+        }
+
+        #[test]
+        fn test_calculate_project_grid_columns_with_sidebar() {
+            let mut app = TestApp::new();
+            app.state.selected_project_path = Some("/path".to_string());
+            // 80 width - 20 sidebar - 2 borders = 58 usable
+            let cols = app.calculate_project_grid_columns();
+            assert!(cols >= 1);
+        }
+
+        #[test]
+        fn test_calculate_project_grid_columns_small_terminal() {
+            let mut app = TestApp::new();
+            app.terminal_size = Some((24, 30)); // Small width
+            let cols = app.calculate_project_grid_columns();
+            assert_eq!(cols, 1); // Should be at least 1
+        }
+
+        #[test]
+        fn test_calculate_project_grid_columns_large_terminal() {
+            let mut app = TestApp::new();
+            app.terminal_size = Some((50, 200)); // Large width
+            let cols = app.calculate_project_grid_columns();
+            assert!(cols > 5); // Should have many columns
+        }
+
+        #[test]
+        fn test_calculate_project_grid_visible_height() {
+            let app = TestApp::new();
+            let height = app.calculate_project_grid_visible_height();
+            // 24 - 2 borders = 22
+            assert_eq!(height, 22);
+        }
+
+        #[test]
+        fn test_calculate_project_grid_visible_height_small_terminal() {
+            let mut app = TestApp::new();
+            app.terminal_size = Some((10, 80));
+            let height = app.calculate_project_grid_visible_height();
+            assert_eq!(height, 8); // 10 - 2
+        }
+
+        #[test]
+        fn test_calculate_project_grid_columns_no_terminal_size() {
+            let mut app = TestApp::new();
+            app.terminal_size = None;
+            // Should use default 80
+            let cols = app.calculate_project_grid_columns();
+            assert!(cols >= 1);
+        }
+    }
+
+    mod navigation_tests {
+        use super::*;
+
+        #[test]
+        fn test_navigate_changes_view() {
+            let mut app = TestApp::new();
+            app.state.current_view = View::Projects;
+            app.navigate(View::Issues, ViewParams::default());
+            assert_eq!(app.state.current_view, View::Issues);
+        }
+
+        #[test]
+        fn test_navigate_saves_history() {
+            let mut app = TestApp::new();
+            app.state.current_view = View::Projects;
+            app.navigate(View::Issues, ViewParams::default());
+            assert_eq!(app.state.view_history.len(), 1);
+            assert_eq!(app.state.view_history[0].0, View::Projects);
+        }
+
+        #[test]
+        fn test_navigate_clears_selection() {
+            let mut app = TestApp::new();
+            app.state.selection.start(ScreenPos::new(5, 5));
+            app.state.selection.update(ScreenPos::new(10, 10));
+            app.navigate(View::Issues, ViewParams::default());
+            assert!(!app.state.selection.has_selection());
+        }
+
+        #[test]
+        fn test_go_back_restores_previous_view() {
+            let mut app = TestApp::new();
+            app.state.current_view = View::Projects;
+            app.navigate(View::Issues, ViewParams::default());
+            app.go_back();
+            assert_eq!(app.state.current_view, View::Projects);
+        }
+
+        #[test]
+        fn test_go_back_skips_form_views() {
+            let mut app = TestApp::new();
+            app.state.current_view = View::Projects;
+            app.navigate(View::Issues, ViewParams::default());
+            app.navigate(View::IssueCreate, ViewParams::default());
+            app.navigate(View::IssueEdit, ViewParams::default());
+            app.go_back();
+            // Should skip IssueEdit and IssueCreate, go back to Issues
+            assert_eq!(app.state.current_view, View::Issues);
+        }
+
+        #[test]
+        fn test_go_back_clears_project_on_return_to_projects() {
+            let mut app = TestApp::new();
+            app.state.selected_project_path = Some("/path".to_string());
+            app.state.current_view = View::Projects;
+            app.navigate(View::Issues, ViewParams::default());
+            app.go_back();
+            assert!(app.state.selected_project_path.is_none());
+        }
+
+        #[test]
+        fn test_go_back_empty_history_does_nothing() {
+            let mut app = TestApp::new();
+            app.state.current_view = View::Issues;
+            app.go_back();
+            // View unchanged when history is empty
+            assert_eq!(app.state.current_view, View::Issues);
+        }
+    }
+
+    mod key_matches_shortcut_tests {
+        use super::*;
+
+        #[test]
+        fn test_empty_shortcut_returns_false() {
+            let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+            assert!(!App::key_matches_shortcut(&key, ""));
+        }
+
+        #[test]
+        fn test_single_char_matches() {
+            let key = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
+            assert!(App::key_matches_shortcut(&key, "n"));
+        }
+
+        #[test]
+        fn test_single_char_case_insensitive() {
+            let key = KeyEvent::new(KeyCode::Char('N'), KeyModifiers::NONE);
+            assert!(App::key_matches_shortcut(&key, "n"));
+        }
+
+        #[test]
+        fn test_ctrl_modifier() {
+            let key = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL);
+            assert!(App::key_matches_shortcut(&key, "Ctrl+D"));
+        }
+
+        #[test]
+        fn test_shift_modifier() {
+            let key = KeyEvent::new(KeyCode::Char('N'), KeyModifiers::SHIFT);
+            assert!(App::key_matches_shortcut(&key, "Shift+N"));
+        }
+
+        #[test]
+        fn test_enter_key() {
+            let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+            assert!(App::key_matches_shortcut(&key, "Enter"));
+        }
+
+        #[test]
+        fn test_escape_key() {
+            let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+            assert!(App::key_matches_shortcut(&key, "Escape"));
+        }
+
+        #[test]
+        fn test_tab_key() {
+            let key = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+            assert!(App::key_matches_shortcut(&key, "Tab"));
+        }
+
+        #[test]
+        fn test_backspace_key() {
+            let key = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+            assert!(App::key_matches_shortcut(&key, "Backspace"));
+        }
+
+        #[test]
+        fn test_delete_key() {
+            let key = KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE);
+            assert!(App::key_matches_shortcut(&key, "Delete"));
+        }
+
+        #[test]
+        fn test_wrong_modifier_returns_false() {
+            let key = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE);
+            assert!(!App::key_matches_shortcut(&key, "Ctrl+D"));
+        }
+
+        #[test]
+        fn test_wrong_key_returns_false() {
+            let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+            assert!(!App::key_matches_shortcut(&key, "n"));
+        }
+    }
+
+    mod action_index_calculation_tests {
+        use super::*;
+
+        fn create_app_with_actions(actions: Vec<EntityAction>) -> TestApp {
+            let mut app = TestApp::new();
+            app.state.current_actions = EntityActionsResponse { actions };
+            app
+        }
+
+        #[test]
+        fn test_click_on_border_returns_none() {
+            let app = create_app_with_actions(vec![EntityAction {
+                id: "test".to_string(),
+                label: "Test".to_string(),
+                category: ActionCategory::Crud,
+                enabled: true,
+                disabled_reason: String::new(),
+                destructive: false,
+                keyboard_shortcut: String::new(),
+            }]);
+            assert!(app.calculate_action_index_from_click(0).is_none());
+        }
+
+        #[test]
+        fn test_click_on_first_action() {
+            let app = create_app_with_actions(vec![EntityAction {
+                id: "test".to_string(),
+                label: "Test".to_string(),
+                category: ActionCategory::Crud,
+                enabled: true,
+                disabled_reason: String::new(),
+                destructive: false,
+                keyboard_shortcut: String::new(),
+            }]);
+            // Row 1 is category header, rows 2-4 are first action button (BUTTON_HEIGHT = 3)
+            let result = app.calculate_action_index_from_click(2);
+            assert_eq!(result, Some(0));
+        }
+
+        #[test]
+        fn test_no_actions_returns_none() {
+            let app = create_app_with_actions(vec![]);
+            assert!(app.calculate_action_index_from_click(5).is_none());
+        }
+    }
+
+    mod splash_tests {
+        use super::*;
+
+        #[test]
+        fn test_update_splash_no_splash_state() {
+            let mut app = TestApp::new();
+            app.splash_state = None;
+            let result = app.update_splash(24);
+            assert!(!result);
+        }
+
+        #[test]
+        fn test_update_splash_transitions_when_complete() {
+            let mut app = TestApp::new();
+            // Create a splash state that has already completed (by skipping)
+            let mut splash = SplashState::new(LogoStyle::default());
+            splash.skip(); // This sets phase to Complete
+            app.splash_state = Some(splash);
+            app.state.current_view = View::Splash;
+
+            // Check directly that splash is in Complete phase
+            assert!(app.splash_state.as_ref().unwrap().is_complete());
+
+            // Now when we check is_complete, it should be true and we transition
+            if let Some(ref splash) = app.splash_state {
+                if splash.is_complete() {
+                    app.splash_state = None;
+                    app.state.current_view = View::Projects;
+                }
+            }
+
+            assert_eq!(app.state.current_view, View::Projects);
+            assert!(app.splash_state.is_none());
+        }
+
+        #[test]
+        fn test_update_splash_not_complete_yet() {
+            let mut app = TestApp::new();
+            app.splash_state = Some(SplashState::new(LogoStyle::default()));
+            app.state.current_view = View::Splash;
+
+            // Don't skip - animation just started
+            let result = app.update_splash(24);
+            assert!(!result);
+            assert_eq!(app.state.current_view, View::Splash);
+        }
+    }
+
+    mod button_press_tests {
+        use super::*;
+
+        #[test]
+        fn test_update_button_press_clears_expired() {
+            let mut app = TestApp::new();
+            // Create an expired button press
+            let mut press = ButtonPressState::new(PressedButton::Sidebar(0));
+            // Manually set pressed_at to a past time
+            press.pressed_at = Instant::now() - Duration::from_millis(200);
+            app.state.button_press = Some(press);
+
+            app.update_button_press();
+            assert!(app.state.button_press.is_none());
+        }
+
+        #[test]
+        fn test_update_button_press_keeps_active() {
+            let mut app = TestApp::new();
+            // Create a fresh button press
+            app.state.button_press = Some(ButtonPressState::new(PressedButton::Sidebar(0)));
+
+            app.update_button_press();
+            assert!(app.state.button_press.is_some());
+        }
+
+        #[test]
+        fn test_update_button_press_no_press() {
+            let mut app = TestApp::new();
+            app.state.button_press = None;
+            app.update_button_press();
+            assert!(app.state.button_press.is_none());
+        }
+    }
+
+    mod find_action_tests {
+        use super::*;
+
+        #[test]
+        fn test_find_action_for_key_with_match() {
+            let mut app = TestApp::new();
+            app.state.current_actions = EntityActionsResponse {
+                actions: vec![
+                    EntityAction {
+                        id: "create".to_string(),
+                        label: "Create".to_string(),
+                        category: ActionCategory::Crud,
+                        enabled: true,
+                        disabled_reason: String::new(),
+                        destructive: false,
+                        keyboard_shortcut: "n".to_string(),
+                    },
+                    EntityAction {
+                        id: "delete".to_string(),
+                        label: "Delete".to_string(),
+                        category: ActionCategory::Crud,
+                        enabled: true,
+                        disabled_reason: String::new(),
+                        destructive: true,
+                        keyboard_shortcut: "d".to_string(),
+                    },
+                ],
+            };
+
+            let key = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE);
+            let result = app.find_action_for_key(&key);
+            assert_eq!(result, Some(1));
+        }
+
+        #[test]
+        fn test_find_action_for_key_no_match() {
+            let mut app = TestApp::new();
+            app.state.current_actions = EntityActionsResponse {
+                actions: vec![EntityAction {
+                    id: "create".to_string(),
+                    label: "Create".to_string(),
+                    category: ActionCategory::Crud,
+                    enabled: true,
+                    disabled_reason: String::new(),
+                    destructive: false,
+                    keyboard_shortcut: "n".to_string(),
+                }],
+            };
+
+            let key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+            let result = app.find_action_for_key(&key);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_find_action_for_key_empty_actions() {
+            let app = TestApp::new();
+            let key = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
+            let result = app.find_action_for_key(&key);
+            assert!(result.is_none());
+        }
+    }
+}

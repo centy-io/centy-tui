@@ -1,10 +1,10 @@
 engine = "Llvm"
-out = ["Lcov", "Json"]
+out = ["Lcov", "Json", "Html"]
 output-dir = "coverage"
 run-types = ["Tests", "Lib"]
 exclude-files = ["target/*"]
 timeout = "300"
 all = true
 branch = true
-fail-under = 90.0
+fail-under = 95.0
 force-clean = true

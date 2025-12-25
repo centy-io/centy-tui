@@ -756,3 +756,194 @@ fn parse_timestamp(s: &str) -> DateTime<Utc> {
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
 }
+
+// Implement the trait for DaemonClient
+use super::traits::DaemonClientTrait;
+use async_trait::async_trait;
+
+#[async_trait]
+impl DaemonClientTrait for DaemonClient {
+    async fn check_connection(&self) -> bool {
+        DaemonClient::check_connection(self).await
+    }
+
+    async fn list_projects(&mut self) -> Result<Vec<Project>> {
+        DaemonClient::list_projects(self).await
+    }
+
+    async fn list_issues(&mut self, project_path: &str) -> Result<Vec<Issue>> {
+        DaemonClient::list_issues(self, project_path).await
+    }
+
+    async fn list_prs(&mut self, project_path: &str) -> Result<Vec<PullRequest>> {
+        DaemonClient::list_prs(self, project_path).await
+    }
+
+    async fn list_docs(&mut self, project_path: &str) -> Result<Vec<Doc>> {
+        DaemonClient::list_docs(self, project_path).await
+    }
+
+    async fn get_config(&mut self, project_path: &str) -> Result<Config> {
+        DaemonClient::get_config(self, project_path).await
+    }
+
+    async fn get_daemon_info(&mut self) -> Result<DaemonInfo> {
+        DaemonClient::get_daemon_info(self).await
+    }
+
+    async fn set_project_favorite(&mut self, project_path: &str, is_favorite: bool) -> Result<()> {
+        DaemonClient::set_project_favorite(self, project_path, is_favorite).await
+    }
+
+    async fn set_project_archived(&mut self, project_path: &str, is_archived: bool) -> Result<()> {
+        DaemonClient::set_project_archived(self, project_path, is_archived).await
+    }
+
+    async fn untrack_project(&mut self, project_path: &str) -> Result<()> {
+        DaemonClient::untrack_project(self, project_path).await
+    }
+
+    async fn create_issue(
+        &mut self,
+        project_path: &str,
+        title: &str,
+        description: &str,
+        priority: u32,
+        draft: bool,
+    ) -> Result<String> {
+        DaemonClient::create_issue(self, project_path, title, description, priority, draft).await
+    }
+
+    async fn update_issue(
+        &mut self,
+        project_path: &str,
+        issue_id: &str,
+        title: &str,
+        description: &str,
+        priority: u32,
+        status: &str,
+    ) -> Result<()> {
+        DaemonClient::update_issue(
+            self,
+            project_path,
+            issue_id,
+            title,
+            description,
+            priority,
+            status,
+        )
+        .await
+    }
+
+    async fn delete_issue(&mut self, project_path: &str, issue_id: &str) -> Result<()> {
+        DaemonClient::delete_issue(self, project_path, issue_id).await
+    }
+
+    async fn create_pr(
+        &mut self,
+        project_path: &str,
+        title: &str,
+        description: &str,
+        source_branch: &str,
+        target_branch: &str,
+    ) -> Result<String> {
+        DaemonClient::create_pr(
+            self,
+            project_path,
+            title,
+            description,
+            source_branch,
+            target_branch,
+        )
+        .await
+    }
+
+    async fn update_pr(
+        &mut self,
+        project_path: &str,
+        pr_id: &str,
+        title: &str,
+        description: &str,
+        source_branch: &str,
+        target_branch: &str,
+        status: &str,
+    ) -> Result<()> {
+        DaemonClient::update_pr(
+            self,
+            project_path,
+            pr_id,
+            title,
+            description,
+            source_branch,
+            target_branch,
+            status,
+        )
+        .await
+    }
+
+    async fn create_doc(
+        &mut self,
+        project_path: &str,
+        title: &str,
+        content: &str,
+        slug: Option<String>,
+    ) -> Result<String> {
+        DaemonClient::create_doc(self, project_path, title, content, slug.as_deref()).await
+    }
+
+    async fn open_in_temp_vscode(
+        &mut self,
+        project_path: &str,
+        issue_id: &str,
+        action: i32,
+        agent_name: &str,
+        ttl_hours: u32,
+    ) -> Result<OpenInVscodeResult> {
+        DaemonClient::open_in_temp_vscode(
+            self,
+            project_path,
+            issue_id,
+            action,
+            agent_name,
+            ttl_hours,
+        )
+        .await
+    }
+
+    async fn open_agent_in_terminal(
+        &mut self,
+        project_path: &str,
+        issue_id: &str,
+        agent_name: &str,
+        workspace_mode: i32,
+        ttl_hours: u32,
+    ) -> Result<OpenInTerminalResult> {
+        DaemonClient::open_agent_in_terminal(
+            self,
+            project_path,
+            issue_id,
+            agent_name,
+            workspace_mode,
+            ttl_hours,
+        )
+        .await
+    }
+
+    async fn restart(&mut self) -> Result<()> {
+        DaemonClient::restart(self).await
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        DaemonClient::shutdown(self).await
+    }
+
+    async fn get_entity_actions(
+        &mut self,
+        project_path: &str,
+        entity_type: EntityType,
+        entity_id: Option<String>,
+    ) -> Result<EntityActionsResponse> {
+        DaemonClient::get_entity_actions(self, project_path, entity_type, entity_id.as_deref())
+            .await
+    }
+}

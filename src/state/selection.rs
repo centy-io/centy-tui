@@ -100,3 +100,282 @@ impl SelectionState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod screen_pos {
+        use super::*;
+
+        #[test]
+        fn test_new_creates_correct_position() {
+            let pos = ScreenPos::new(5, 10);
+            assert_eq!(pos.col, 5);
+            assert_eq!(pos.row, 10);
+        }
+
+        #[test]
+        fn test_default_is_zero() {
+            let pos = ScreenPos::default();
+            assert_eq!(pos.col, 0);
+            assert_eq!(pos.row, 0);
+        }
+
+        #[test]
+        fn test_normalize_range_already_ordered() {
+            let start = ScreenPos::new(5, 10);
+            let end = ScreenPos::new(15, 20);
+            let (s, e) = ScreenPos::normalize_range(start, end);
+            assert_eq!(s, start);
+            assert_eq!(e, end);
+        }
+
+        #[test]
+        fn test_normalize_range_reversed_rows() {
+            let start = ScreenPos::new(5, 20);
+            let end = ScreenPos::new(15, 10);
+            let (s, e) = ScreenPos::normalize_range(start, end);
+            assert_eq!(s, end);
+            assert_eq!(e, start);
+        }
+
+        #[test]
+        fn test_normalize_range_same_row_ordered() {
+            let start = ScreenPos::new(5, 10);
+            let end = ScreenPos::new(15, 10);
+            let (s, e) = ScreenPos::normalize_range(start, end);
+            assert_eq!(s, start);
+            assert_eq!(e, end);
+        }
+
+        #[test]
+        fn test_normalize_range_same_row_reversed() {
+            let start = ScreenPos::new(15, 10);
+            let end = ScreenPos::new(5, 10);
+            let (s, e) = ScreenPos::normalize_range(start, end);
+            assert_eq!(s, end);
+            assert_eq!(e, start);
+        }
+
+        #[test]
+        fn test_normalize_range_same_position() {
+            let pos = ScreenPos::new(5, 10);
+            let (s, e) = ScreenPos::normalize_range(pos, pos);
+            assert_eq!(s, pos);
+            assert_eq!(e, pos);
+        }
+    }
+
+    mod selection_state {
+        use super::*;
+
+        #[test]
+        fn test_default_is_empty() {
+            let state = SelectionState::default();
+            assert!(state.anchor.is_none());
+            assert!(state.cursor.is_none());
+            assert!(!state.is_selecting);
+            assert!(!state.keyboard_mode);
+            assert!(state.keyboard_cursor.is_none());
+        }
+
+        #[test]
+        fn test_start_sets_anchor_and_cursor() {
+            let mut state = SelectionState::default();
+            let pos = ScreenPos::new(5, 10);
+            state.start(pos);
+
+            assert_eq!(state.anchor, Some(pos));
+            assert_eq!(state.cursor, Some(pos));
+            assert!(state.is_selecting);
+        }
+
+        #[test]
+        fn test_update_changes_cursor_only() {
+            let mut state = SelectionState::default();
+            let start = ScreenPos::new(5, 10);
+            let end = ScreenPos::new(15, 20);
+
+            state.start(start);
+            state.update(end);
+
+            assert_eq!(state.anchor, Some(start));
+            assert_eq!(state.cursor, Some(end));
+        }
+
+        #[test]
+        fn test_finish_stops_selecting() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 10));
+            assert!(state.is_selecting);
+
+            state.finish();
+            assert!(!state.is_selecting);
+        }
+
+        #[test]
+        fn test_clear_resets_all_fields() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 10));
+            state.update(ScreenPos::new(15, 20));
+            state.keyboard_mode = true;
+            state.keyboard_cursor = Some(ScreenPos::new(10, 15));
+
+            state.clear();
+
+            assert!(state.anchor.is_none());
+            assert!(state.cursor.is_none());
+            assert!(!state.is_selecting);
+            assert!(!state.keyboard_mode);
+            assert!(state.keyboard_cursor.is_none());
+        }
+
+        #[test]
+        fn test_get_range_with_valid_selection() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 10));
+            state.update(ScreenPos::new(15, 20));
+
+            let range = state.get_range();
+            assert!(range.is_some());
+            let (start, end) = range.unwrap();
+            assert_eq!(start, ScreenPos::new(5, 10));
+            assert_eq!(end, ScreenPos::new(15, 20));
+        }
+
+        #[test]
+        fn test_get_range_normalizes_reversed_selection() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(15, 20));
+            state.update(ScreenPos::new(5, 10));
+
+            let range = state.get_range();
+            assert!(range.is_some());
+            let (start, end) = range.unwrap();
+            assert_eq!(start, ScreenPos::new(5, 10));
+            assert_eq!(end, ScreenPos::new(15, 20));
+        }
+
+        #[test]
+        fn test_get_range_returns_none_without_anchor() {
+            let state = SelectionState::default();
+            assert!(state.get_range().is_none());
+        }
+
+        #[test]
+        fn test_get_range_returns_none_with_only_anchor() {
+            let mut state = SelectionState::default();
+            state.anchor = Some(ScreenPos::new(5, 10));
+            assert!(state.get_range().is_none());
+        }
+
+        #[test]
+        fn test_contains_inside_selection() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(15, 15));
+
+            assert!(state.contains(ScreenPos::new(10, 10)));
+        }
+
+        #[test]
+        fn test_contains_on_start_boundary() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(15, 15));
+
+            assert!(state.contains(ScreenPos::new(5, 5)));
+        }
+
+        #[test]
+        fn test_contains_on_end_boundary() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(15, 15));
+
+            assert!(state.contains(ScreenPos::new(15, 15)));
+        }
+
+        #[test]
+        fn test_contains_on_start_row() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(15, 15));
+
+            // Should contain positions on start row after start col
+            assert!(state.contains(ScreenPos::new(10, 5)));
+            // Should not contain positions on start row before start col
+            assert!(!state.contains(ScreenPos::new(3, 5)));
+        }
+
+        #[test]
+        fn test_contains_on_end_row() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(15, 15));
+
+            // Should contain positions on end row before end col
+            assert!(state.contains(ScreenPos::new(10, 15)));
+            // Should not contain positions on end row after end col
+            assert!(!state.contains(ScreenPos::new(20, 15)));
+        }
+
+        #[test]
+        fn test_contains_outside_above() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(15, 15));
+
+            assert!(!state.contains(ScreenPos::new(10, 3)));
+        }
+
+        #[test]
+        fn test_contains_outside_below() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(15, 15));
+
+            assert!(!state.contains(ScreenPos::new(10, 20)));
+        }
+
+        #[test]
+        fn test_contains_false_without_selection() {
+            let state = SelectionState::default();
+            assert!(!state.contains(ScreenPos::new(5, 5)));
+        }
+
+        #[test]
+        fn test_has_selection_true_when_different_positions() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(10, 5));
+
+            assert!(state.has_selection());
+        }
+
+        #[test]
+        fn test_has_selection_false_when_same_position() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            // Don't update - cursor and anchor are the same
+
+            assert!(!state.has_selection());
+        }
+
+        #[test]
+        fn test_has_selection_false_without_selection() {
+            let state = SelectionState::default();
+            assert!(!state.has_selection());
+        }
+
+        #[test]
+        fn test_has_selection_true_with_different_rows() {
+            let mut state = SelectionState::default();
+            state.start(ScreenPos::new(5, 5));
+            state.update(ScreenPos::new(5, 10));
+
+            assert!(state.has_selection());
+        }
+    }
+}

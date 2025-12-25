@@ -1,8 +1,6 @@
 //! Layout components (header, sidebar, status bar)
 
-use super::components::{
-    render_scrollable_sidebar, ScrollableSidebarConfig, SidebarItem,
-};
+use super::components::{render_scrollable_sidebar, ScrollableSidebarConfig, SidebarItem};
 use crate::app::App;
 use crate::state::{PressedButton, View};
 use ratatui::{
