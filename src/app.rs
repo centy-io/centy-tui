@@ -743,6 +743,50 @@ impl App {
         Ok(())
     }
 
+    /// Execute the "Open in Terminal" action
+    async fn execute_open_in_terminal(&mut self) -> Result<()> {
+        let project_path = match &self.state.selected_project_path {
+            Some(path) => path.clone(),
+            None => {
+                self.status_message = Some("No project selected".to_string());
+                return Ok(());
+            }
+        };
+
+        let issue_id = match &self.state.selected_issue_id {
+            Some(id) => id.clone(),
+            None => {
+                self.status_message = Some("No issue selected".to_string());
+                return Ok(());
+            }
+        };
+
+        self.status_message = Some("Opening in terminal...".to_string());
+
+        match self
+            .daemon
+            .open_agent_in_terminal(&project_path, &issue_id, "", 0, 0)
+            .await
+        {
+            Ok(result) => {
+                if result.terminal_opened {
+                    self.status_message = Some(format!(
+                        "Opened #{} in terminal with {}",
+                        result.display_number, result.agent_command
+                    ));
+                } else {
+                    self.status_message =
+                        Some(format!("Agent ready at {}", result.working_directory));
+                }
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Failed to open: {}", e));
+            }
+        }
+
+        Ok(())
+    }
+
     // =========== Dynamic Actions ===========
 
     /// Fetch entity actions from daemon
@@ -955,6 +999,9 @@ impl App {
             "open_in_vscode" => {
                 self.execute_open_in_vscode().await?;
             }
+            "open_in_terminal" => {
+                self.execute_open_in_terminal().await?;
+            }
 
             // Status transitions (dynamic, e.g., "status:open", "status:closed")
             id if id.starts_with("status:") => {
@@ -986,8 +1033,7 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
-            {
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
                         .daemon
@@ -1040,8 +1086,7 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
-            {
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 match (
                     &self.state.selected_project_path,
                     &self.state.selected_issue_id,
@@ -1235,8 +1280,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
-            {
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
                         .daemon
@@ -1285,8 +1329,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
-            {
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 match (
                     &self.state.selected_project_path,
                     &self.state.selected_pr_id,
@@ -1460,8 +1503,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
-            {
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 if let Some(path) = &self.state.selected_project_path {
                     let slug = if self.state.form_slug.is_empty() {
                         None
@@ -1836,7 +1878,7 @@ impl App {
             MouseEventKind::Down(MouseButton::Left) => {
                 if mouse.column >= main_area_start_x && mouse.row >= GRID_START_Y {
                     let rel_x = mouse.column - main_area_start_x - 1; // -1 for border
-                    // Account for scroll offset when calculating click position
+                                                                      // Account for scroll offset when calculating click position
                     let scroll_offset = self.state.scroll_offset as u16;
                     let rel_y = mouse.row - GRID_START_Y + scroll_offset;
 
@@ -1851,8 +1893,7 @@ impl App {
                         y_offset += SECTION_HEADER_HEIGHT;
 
                         let section_size = section.projects.len();
-                        let rows_in_section =
-                            section_size.div_ceil(columns);
+                        let rows_in_section = section_size.div_ceil(columns);
                         let section_height = (rows_in_section as u16) * CARD_HEIGHT;
 
                         // Check if click is in this section's project area
