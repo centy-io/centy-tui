@@ -351,6 +351,7 @@ impl App {
                 }
             }
             KeyCode::Char('n') => {
+                self.state.start_issue_create();
                 self.navigate(View::IssueCreate, ViewParams::default());
             }
             KeyCode::Char('s') => {
@@ -381,6 +382,7 @@ impl App {
         match index {
             0 => {
                 // Create: Navigate to IssueCreate view
+                self.state.start_issue_create();
                 self.navigate(View::IssueCreate, ViewParams::default());
             }
             1 => {
@@ -461,11 +463,15 @@ impl App {
             }
             // Edit issue
             KeyCode::Char('e') => {
-                if let Some(issue_id) = &self.state.selected_issue_id {
+                if let Some(issue_id) = self.state.selected_issue_id.clone() {
+                    // Initialize form with issue data
+                    if let Some(issue) = self.state.issues.iter().find(|i| i.id == issue_id).cloned() {
+                        self.state.start_issue_edit(&issue);
+                    }
                     self.navigate(
                         View::IssueEdit,
                         ViewParams {
-                            issue_id: Some(issue_id.clone()),
+                            issue_id: Some(issue_id),
                             ..Default::default()
                         },
                     );
@@ -662,8 +668,14 @@ impl App {
     /// Handle keys in Issue Create view
     async fn handle_issue_create_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Tab => self.state.next_form_field(),
-            KeyCode::BackTab => self.state.prev_form_field(),
+            KeyCode::Tab => {
+                self.state.form.next_field();
+                self.state.next_form_field();
+            }
+            KeyCode::BackTab => {
+                self.state.form.prev_field();
+                self.state.prev_form_field();
+            }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
@@ -694,14 +706,35 @@ impl App {
             }
             KeyCode::Esc => {
                 self.state.clear_form();
+                self.state.reset_form();
                 self.go_back();
             }
-            KeyCode::Char(c) => self
-                .state
-                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
-            KeyCode::Backspace => self.state.form_backspace(),
+            KeyCode::Char(c) => {
+                // Use new FormState if active, otherwise fall back to legacy
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.push_char(if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c
+                    });
+                } else {
+                    self.state
+                        .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT));
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.pop_char();
+                } else {
+                    self.state.form_backspace();
+                }
+            }
             KeyCode::Enter => {
-                if self.state.active_form_field == 1 {
+                if self.state.form.is_active_field_multiline() {
+                    if let Some(field) = self.state.form.get_active_field_mut() {
+                        field.push_char('\n');
+                    }
+                } else if self.state.active_form_field == 1 {
                     self.state.form_description.push('\n');
                 }
             }
@@ -713,8 +746,14 @@ impl App {
     /// Handle keys in Issue Edit view
     async fn handle_issue_edit_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Tab => self.state.next_form_field(),
-            KeyCode::BackTab => self.state.prev_form_field(),
+            KeyCode::Tab => {
+                self.state.form.next_field();
+                self.state.next_form_field();
+            }
+            KeyCode::BackTab => {
+                self.state.form.prev_field();
+                self.state.prev_form_field();
+            }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let (Some(path), Some(issue_id)) = (
                     &self.state.selected_project_path,
@@ -736,6 +775,7 @@ impl App {
                             self.state.issues = issues;
                         }
                         self.state.clear_form();
+                        self.state.reset_form();
                         self.go_back();
                     } else {
                         self.status_message = Some("Failed to update issue".to_string());
@@ -744,14 +784,34 @@ impl App {
             }
             KeyCode::Esc => {
                 self.state.clear_form();
+                self.state.reset_form();
                 self.go_back();
             }
-            KeyCode::Char(c) => self
-                .state
-                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
-            KeyCode::Backspace => self.state.form_backspace(),
+            KeyCode::Char(c) => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.push_char(if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c
+                    });
+                } else {
+                    self.state
+                        .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT));
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.pop_char();
+                } else {
+                    self.state.form_backspace();
+                }
+            }
             KeyCode::Enter => {
-                if self.state.active_form_field == 1 {
+                if self.state.form.is_active_field_multiline() {
+                    if let Some(field) = self.state.form.get_active_field_mut() {
+                        field.push_char('\n');
+                    }
+                } else if self.state.active_form_field == 1 {
                     self.state.form_description.push('\n');
                 }
             }
@@ -784,7 +844,10 @@ impl App {
                     );
                 }
             }
-            KeyCode::Char('n') => self.navigate(View::PrCreate, ViewParams::default()),
+            KeyCode::Char('n') => {
+                self.state.start_pr_create();
+                self.navigate(View::PrCreate, ViewParams::default());
+            }
             KeyCode::Char('s') => self.state.cycle_pr_sort_field(),
             KeyCode::Char('S') => self.state.toggle_pr_sort_direction(),
             KeyCode::Char('a') => {
@@ -801,11 +864,15 @@ impl App {
     async fn handle_pr_detail_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('e') => {
-                if let Some(pr_id) = &self.state.selected_pr_id {
+                if let Some(pr_id) = self.state.selected_pr_id.clone() {
+                    // Initialize form with PR data
+                    if let Some(pr) = self.state.prs.iter().find(|p| p.id == pr_id).cloned() {
+                        self.state.start_pr_edit(&pr);
+                    }
                     self.navigate(
                         View::PrEdit,
                         ViewParams {
-                            pr_id: Some(pr_id.clone()),
+                            pr_id: Some(pr_id),
                             ..Default::default()
                         },
                     );
@@ -824,6 +891,7 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.state.clear_form();
+                self.state.reset_form();
                 self.go_back();
             }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -843,6 +911,7 @@ impl App {
                             self.state.prs = prs;
                         }
                         self.state.selected_pr_id = Some(new_id.clone());
+                        self.state.reset_form();
                         self.navigate_to_created_item(
                             View::PrDetail,
                             ViewParams {
@@ -853,12 +922,42 @@ impl App {
                     }
                 }
             }
-            KeyCode::Tab => self.state.next_form_field(),
-            KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char(c) => self
-                .state
-                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
-            KeyCode::Backspace => self.state.form_backspace(),
+            KeyCode::Tab => {
+                self.state.form.next_field();
+                self.state.next_form_field();
+            }
+            KeyCode::BackTab => {
+                self.state.form.prev_field();
+                self.state.prev_form_field();
+            }
+            KeyCode::Char(c) => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.push_char(if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c
+                    });
+                } else {
+                    self.state
+                        .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT));
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.pop_char();
+                } else {
+                    self.state.form_backspace();
+                }
+            }
+            KeyCode::Enter => {
+                if self.state.form.is_active_field_multiline() {
+                    if let Some(field) = self.state.form.get_active_field_mut() {
+                        field.push_char('\n');
+                    }
+                } else if self.state.active_form_field == 1 {
+                    self.state.form_description.push('\n');
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -869,6 +968,7 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.state.clear_form();
+                self.state.reset_form();
                 self.go_back();
             }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -893,16 +993,47 @@ impl App {
                             self.state.prs = prs;
                         }
                         self.state.clear_form();
+                        self.state.reset_form();
                         self.go_back();
                     }
                 }
             }
-            KeyCode::Tab => self.state.next_form_field(),
-            KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char(c) => self
-                .state
-                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
-            KeyCode::Backspace => self.state.form_backspace(),
+            KeyCode::Tab => {
+                self.state.form.next_field();
+                self.state.next_form_field();
+            }
+            KeyCode::BackTab => {
+                self.state.form.prev_field();
+                self.state.prev_form_field();
+            }
+            KeyCode::Char(c) => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.push_char(if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c
+                    });
+                } else {
+                    self.state
+                        .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT));
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.pop_char();
+                } else {
+                    self.state.form_backspace();
+                }
+            }
+            KeyCode::Enter => {
+                if self.state.form.is_active_field_multiline() {
+                    if let Some(field) = self.state.form.get_active_field_mut() {
+                        field.push_char('\n');
+                    }
+                } else if self.state.active_form_field == 1 {
+                    self.state.form_description.push('\n');
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -927,7 +1058,10 @@ impl App {
                     );
                 }
             }
-            KeyCode::Char('n') => self.navigate(View::DocCreate, ViewParams::default()),
+            KeyCode::Char('n') => {
+                self.state.start_doc_create();
+                self.navigate(View::DocCreate, ViewParams::default());
+            }
             KeyCode::Esc | KeyCode::Backspace => self.go_back(),
             _ => {}
         }
@@ -952,6 +1086,7 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.state.clear_form();
+                self.state.reset_form();
                 self.go_back();
             }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -975,6 +1110,7 @@ impl App {
                             self.state.docs = docs;
                         }
                         self.state.selected_doc_slug = Some(new_slug.clone());
+                        self.state.reset_form();
                         self.navigate_to_created_item(
                             View::DocDetail,
                             ViewParams {
@@ -985,14 +1121,39 @@ impl App {
                     }
                 }
             }
-            KeyCode::Tab => self.state.next_form_field(),
-            KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char(c) => self
-                .state
-                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
-            KeyCode::Backspace => self.state.form_backspace(),
+            KeyCode::Tab => {
+                self.state.form.next_field();
+                self.state.next_form_field();
+            }
+            KeyCode::BackTab => {
+                self.state.form.prev_field();
+                self.state.prev_form_field();
+            }
+            KeyCode::Char(c) => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.push_char(if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c
+                    });
+                } else {
+                    self.state
+                        .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT));
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(field) = self.state.form.get_active_field_mut() {
+                    field.pop_char();
+                } else {
+                    self.state.form_backspace();
+                }
+            }
             KeyCode::Enter => {
-                if self.state.active_form_field == 1 {
+                if self.state.form.is_active_field_multiline() {
+                    if let Some(field) = self.state.form.get_active_field_mut() {
+                        field.push_char('\n');
+                    }
+                } else if self.state.active_form_field == 1 {
                     self.state.form_description.push('\n');
                 }
             }
