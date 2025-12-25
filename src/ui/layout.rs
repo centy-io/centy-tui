@@ -159,12 +159,6 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
         spans.push(Span::styled(msg, Style::default().fg(Color::Green)));
     }
 
-    // Status message
-    if let Some(msg) = &app.status_message {
-        spans.push(Span::raw(" | "));
-        spans.push(Span::styled(msg, Style::default().fg(Color::Yellow)));
-    }
-
     // Project path
     if let Some(path) = &app.state.selected_project_path {
         let project_name = path.split('/').next_back().unwrap_or(path);

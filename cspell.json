@@ -2,6 +2,7 @@
   "version": "0.2",
   "language": "en",
   "words": [
+    "Deque",
     "worktree",
     "favorited",
     "centy",
@@ -37,6 +38,8 @@
   ],
   "ignorePaths": [
     ".centy-manifest.json",
-    "proto/**"
+    ".centy/**",
+    "proto/**",
+    "target/**"
   ]
 }
