@@ -11,14 +11,28 @@ use ratatui::{
 };
 
 /// Create the main layout with sidebar
-pub fn create_layout(area: Rect) -> (Rect, Rect) {
+/// Returns (context_bar_area, sidebar_area, main_content_area)
+pub fn create_layout(area: Rect) -> (Rect, Rect, Rect) {
+    // First split: context bar at top, rest below
+    let vertical_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Context bar (with borders)
+            Constraint::Min(0),    // Rest of content
+        ])
+        .split(area);
+
+    let context_bar_area = vertical_chunks[0];
+    let content_area = vertical_chunks[1];
+
+    // Horizontal split for sidebar and main
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Length(20), // Sidebar
             Constraint::Min(0),     // Main content
         ])
-        .split(area);
+        .split(content_area);
 
     // Reserve bottom line for status bar
     let main_chunks = Layout::default()
@@ -37,11 +51,24 @@ pub fn create_layout(area: Rect) -> (Rect, Rect) {
         ])
         .split(chunks[0]);
 
-    (sidebar_chunks[0], main_chunks[0])
+    (context_bar_area, sidebar_chunks[0], main_chunks[0])
 }
 
 /// Create full-width layout without sidebar (for when no project is selected)
-pub fn create_layout_no_sidebar(area: Rect) -> Rect {
+/// Returns (context_bar_area, main_content_area)
+pub fn create_layout_no_sidebar(area: Rect) -> (Rect, Rect) {
+    // First split: context bar at top, rest below
+    let vertical_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Context bar (with borders)
+            Constraint::Min(0),    // Rest of content
+        ])
+        .split(area);
+
+    let context_bar_area = vertical_chunks[0];
+    let content_area = vertical_chunks[1];
+
     // Reserve bottom line for status bar
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -49,9 +76,9 @@ pub fn create_layout_no_sidebar(area: Rect) -> Rect {
             Constraint::Min(0),    // Content
             Constraint::Length(1), // Status bar
         ])
-        .split(area);
+        .split(content_area);
 
-    chunks[0]
+    (context_bar_area, chunks[0])
 }
 
 /// Draw the status bar
