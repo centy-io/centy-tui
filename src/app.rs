@@ -2,9 +2,9 @@
 
 use crate::daemon::DaemonClient;
 use crate::state::{
-    AppState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus, IssuesListFocus,
-    LlmAction, LogoStyle, PrDetailFocus, PrsListFocus, ScreenBuffer, ScreenPos, SplashState, View,
-    ViewParams,
+    AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
+    IssuesListFocus, LlmAction, LogoStyle, PrDetailFocus, PressedButton, PrsListFocus,
+    ScreenBuffer, ScreenPos, SplashState, View, ViewParams,
 };
 use crate::ui::BUTTON_HEIGHT;
 use anyhow::Result;
@@ -78,6 +78,16 @@ impl App {
             }
         }
         false
+    }
+
+    /// Update button press animation state.
+    /// Clears the animation if it has expired.
+    pub fn update_button_press(&mut self) {
+        if let Some(ref press) = self.state.button_press {
+            if press.is_expired() {
+                self.state.button_press = None;
+            }
+        }
     }
 
     /// Check if in splash screen
@@ -1577,26 +1587,36 @@ impl App {
                 let has_project = self.state.selected_project_path.is_some();
                 match item_index {
                     0 => {
+                        self.state.button_press =
+                            Some(ButtonPressState::new(PressedButton::Sidebar(0)));
                         self.state.sidebar_index = 0;
                         self.navigate(View::Projects, ViewParams::default());
                         return Ok(true);
                     }
                     1 if has_project => {
+                        self.state.button_press =
+                            Some(ButtonPressState::new(PressedButton::Sidebar(1)));
                         self.state.sidebar_index = 1;
                         self.navigate(View::Issues, ViewParams::default());
                         return Ok(true);
                     }
                     2 if has_project => {
+                        self.state.button_press =
+                            Some(ButtonPressState::new(PressedButton::Sidebar(2)));
                         self.state.sidebar_index = 2;
                         self.navigate(View::Prs, ViewParams::default());
                         return Ok(true);
                     }
                     3 if has_project => {
+                        self.state.button_press =
+                            Some(ButtonPressState::new(PressedButton::Sidebar(3)));
                         self.state.sidebar_index = 3;
                         self.navigate(View::Docs, ViewParams::default());
                         return Ok(true);
                     }
                     4 if has_project => {
+                        self.state.button_press =
+                            Some(ButtonPressState::new(PressedButton::Sidebar(4)));
                         self.state.sidebar_index = 4;
                         self.navigate(View::Config, ViewParams::default());
                         return Ok(true);
@@ -1636,6 +1656,10 @@ impl App {
                                 .unwrap_or(false);
 
                             if is_enabled {
+                                // Trigger button press animation
+                                self.state.button_press = Some(ButtonPressState::new(
+                                    PressedButton::ActionPanel(action_idx),
+                                ));
                                 self.state.action_panel_selected_index = action_idx;
                                 self.execute_selected_dynamic_action().await?;
                             }
@@ -1855,6 +1879,10 @@ impl App {
                                     .unwrap_or(false);
 
                                 if is_enabled {
+                                    // Trigger button press animation
+                                    self.state.button_press = Some(ButtonPressState::new(
+                                        PressedButton::ActionPanel(action_idx),
+                                    ));
                                     self.state.action_panel_selected_index = action_idx;
                                     self.execute_selected_dynamic_action().await?;
                                 }

@@ -2,7 +2,7 @@
 
 use super::components::{render_sidebar_button, BUTTON_HEIGHT};
 use crate::app::App;
-use crate::state::View;
+use crate::state::{PressedButton, View};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -100,7 +100,15 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
         let requires_project = (1..=4).contains(&idx);
         let is_enabled = !requires_project || has_project;
 
-        render_sidebar_button(frame, chunks[idx + 1], label, is_selected, is_enabled);
+        // Check if this sidebar button is pressed for animation
+        let is_pressed = app
+            .state
+            .button_press
+            .as_ref()
+            .map(|bp| matches!(&bp.button, PressedButton::Sidebar(i) if *i == idx))
+            .unwrap_or(false);
+
+        render_sidebar_button(frame, chunks[idx + 1], label, is_selected, is_enabled, is_pressed);
     }
 }
 

@@ -7,7 +7,7 @@ use super::SelectionState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Current view in the application
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -499,6 +499,41 @@ impl EntityActionsResponse {
     }
 }
 
+/// Identifies which button is currently pressed for animation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PressedButton {
+    /// Sidebar button at given index (0-4: Projects, Issues, PRs, Docs, Config)
+    Sidebar(usize),
+    /// Action panel button at given index
+    ActionPanel(usize),
+}
+
+/// Tracks button press animation state
+#[derive(Debug, Clone)]
+pub struct ButtonPressState {
+    /// Which button is pressed
+    pub button: PressedButton,
+    /// When the button was pressed
+    pub pressed_at: Instant,
+}
+
+impl ButtonPressState {
+    /// Animation duration in milliseconds
+    pub const DURATION_MS: u64 = 120;
+
+    pub fn new(button: PressedButton) -> Self {
+        Self {
+            button,
+            pressed_at: Instant::now(),
+        }
+    }
+
+    /// Check if the animation has expired
+    pub fn is_expired(&self) -> bool {
+        self.pressed_at.elapsed() > Duration::from_millis(Self::DURATION_MS)
+    }
+}
+
 /// Main application state
 #[derive(Default)]
 pub struct AppState {
@@ -582,6 +617,9 @@ pub struct AppState {
 
     // Text selection state
     pub selection: SelectionState,
+
+    // Button press animation state
+    pub button_press: Option<ButtonPressState>,
 }
 
 impl AppState {
