@@ -6,7 +6,7 @@ use crate::state::{
 use anyhow::Result;
 use async_trait::async_trait;
 
-use super::client::{OpenInTerminalResult, OpenInVscodeResult};
+use super::client::{proto, OpenInTerminalResult, OpenInVscodeResult};
 
 /// Trait for daemon client operations, enabling mocking in tests
 #[allow(dead_code)]
@@ -91,13 +91,15 @@ pub trait DaemonClientTrait: Send + Sync {
     ) -> Result<()>;
 
     /// Create a new doc
+    /// Returns (slug, sync_results) where sync_results contains org sync status
     async fn create_doc(
         &mut self,
         project_path: &str,
         title: &str,
         content: &str,
         slug: Option<String>,
-    ) -> Result<String>;
+        is_org_doc: bool,
+    ) -> Result<(String, Vec<proto::OrgDocSyncResult>)>;
 
     /// Open a project in a temporary VS Code workspace
     async fn open_in_temp_vscode(

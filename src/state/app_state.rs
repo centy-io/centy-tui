@@ -623,6 +623,7 @@ pub struct AppState {
     pub form_priority: u32,
     pub form_status: String,
     pub form_slug: String,
+    pub form_is_org_doc: bool,
     pub form_source_branch: String,
     pub form_target_branch: String,
     /// Selected button index for create forms (0=Cancel, 1=Draft, 2=Create&New, 3=Create)
@@ -1178,6 +1179,7 @@ impl AppState {
         self.form_priority = 0;
         self.form_status.clear();
         self.form_slug.clear();
+        self.form_is_org_doc = false;
         self.form_source_branch.clear();
         self.form_target_branch.clear();
         self.form_selected_button = 0; // Default to "Create" button (first in sidebar)
@@ -1201,6 +1203,11 @@ impl AppState {
         self.form_status = pr.metadata.status.clone();
         self.form_source_branch = pr.metadata.source_branch.clone();
         self.form_target_branch = pr.metadata.target_branch.clone();
+    }
+
+    /// Toggle the org-wide doc checkbox
+    pub fn toggle_org_doc(&mut self) {
+        self.form_is_org_doc = !self.form_is_org_doc;
     }
 
     // =========== Form State Transitions (DDD) ===========

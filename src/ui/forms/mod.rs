@@ -9,6 +9,7 @@ mod pr_form;
 
 // Re-export with original function names for API compatibility
 pub use doc_form::draw_create as draw_doc_create;
+pub use doc_form::get_field_count as get_doc_field_count;
 pub use issue_form::draw_create as draw_issue_create;
 pub use issue_form::draw_edit as draw_issue_edit;
 pub use pr_form::draw_create as draw_pr_create;

@@ -3,7 +3,7 @@
 pub mod components;
 mod config_panel;
 mod docs;
-mod forms;
+pub mod forms;
 mod issues;
 mod layout;
 mod projects;

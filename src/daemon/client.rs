@@ -554,13 +554,15 @@ impl DaemonClient {
     }
 
     /// Create a new doc
+    /// Returns (slug, sync_results) where sync_results contains org sync status
     pub async fn create_doc(
         &mut self,
         project_path: &str,
         title: &str,
         content: &str,
         slug: Option<&str>,
-    ) -> Result<String> {
+        is_org_doc: bool,
+    ) -> Result<(String, Vec<proto::OrgDocSyncResult>)> {
         let client = self.ensure_connected().await?;
 
         let request = tonic::Request::new(proto::CreateDocRequest {
@@ -569,6 +571,7 @@ impl DaemonClient {
             content: content.to_string(),
             slug: slug.unwrap_or("").to_string(),
             template: String::new(),
+            is_org_doc,
         });
 
         let response = client
@@ -581,7 +584,7 @@ impl DaemonClient {
             return Err(anyhow!("Failed to create doc: {}", inner.error));
         }
 
-        Ok(inner.slug)
+        Ok((inner.slug, inner.sync_results))
     }
 
     /// Open a project in a temporary VS Code workspace
@@ -887,8 +890,17 @@ impl DaemonClientTrait for DaemonClient {
         title: &str,
         content: &str,
         slug: Option<String>,
-    ) -> Result<String> {
-        DaemonClient::create_doc(self, project_path, title, content, slug.as_deref()).await
+        is_org_doc: bool,
+    ) -> Result<(String, Vec<proto::OrgDocSyncResult>)> {
+        DaemonClient::create_doc(
+            self,
+            project_path,
+            title,
+            content,
+            slug.as_deref(),
+            is_org_doc,
+        )
+        .await
     }
 
     async fn open_in_temp_vscode(

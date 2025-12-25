@@ -6,6 +6,7 @@ use crate::state::{
     IssuesListFocus, LlmAction, LogoStyle, PrDetailFocus, PressedButton, PrsListFocus,
     ScreenBuffer, ScreenPos, SplashState, View, ViewParams,
 };
+use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -1620,6 +1621,9 @@ impl App {
 
     /// Handle keys in Doc Create view
     async fn handle_doc_create_key(&mut self, key: KeyEvent) -> Result<()> {
+        let field_count = get_doc_field_count(self);
+        let org_checkbox_field = if field_count == 4 { Some(3) } else { None };
+
         match key.code {
             KeyCode::Esc => {
                 self.state.clear_form();
@@ -1632,8 +1636,24 @@ impl App {
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 self.save_doc_create().await;
             }
-            KeyCode::Tab => self.state.next_form_field(),
-            KeyCode::BackTab => self.state.prev_form_field(),
+            KeyCode::Tab => {
+                // Wrap around based on actual field count
+                self.state.active_form_field = (self.state.active_form_field + 1) % field_count;
+            }
+            KeyCode::BackTab => {
+                // Wrap around based on actual field count
+                if self.state.active_form_field == 0 {
+                    self.state.active_form_field = field_count - 1;
+                } else {
+                    self.state.active_form_field -= 1;
+                }
+            }
+            // Toggle checkbox with Space or Enter when on org checkbox field
+            KeyCode::Char(' ') | KeyCode::Enter
+                if org_checkbox_field == Some(self.state.active_form_field) =>
+            {
+                self.state.toggle_org_doc();
+            }
             KeyCode::Char(c) => self
                 .state
                 .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
@@ -1650,23 +1670,48 @@ impl App {
 
     /// Helper to save doc create
     async fn save_doc_create(&mut self) {
-        if let Some(path) = &self.state.selected_project_path {
-            let slug = if self.state.form_slug.is_empty() {
-                None
-            } else {
-                Some(self.state.form_slug.as_str())
-            };
-            let result = self
-                .daemon
-                .create_doc(
-                    path,
-                    &self.state.form_title,
-                    &self.state.form_description,
-                    slug,
-                )
-                .await;
-            if let Ok(new_slug) = result {
-                if let Ok(docs) = self.daemon.list_docs(path).await {
+        let Some(path) = self.state.selected_project_path.clone() else {
+            self.push_error("No project selected");
+            return;
+        };
+
+        let slug = if self.state.form_slug.is_empty() {
+            None
+        } else {
+            Some(self.state.form_slug.clone())
+        };
+        let result = self
+            .daemon
+            .create_doc(
+                &path,
+                &self.state.form_title,
+                &self.state.form_description,
+                slug.as_deref(),
+                self.state.form_is_org_doc,
+            )
+            .await;
+        match result {
+            Ok((new_slug, sync_results)) => {
+                // Show sync results if this was an org doc
+                if !sync_results.is_empty() {
+                    let success_count = sync_results.iter().filter(|r| r.success).count();
+                    let total = sync_results.len();
+                    if success_count < total {
+                        // Some failed - show warning
+                        let failed: Vec<_> = sync_results
+                            .iter()
+                            .filter(|r| !r.success)
+                            .map(|r| r.error.clone())
+                            .collect();
+                        self.push_error(format!(
+                            "Doc created, but sync failed for {} project(s): {}",
+                            total - success_count,
+                            failed.join(", ")
+                        ));
+                    }
+                }
+
+                if let Ok(docs) = self.daemon.list_docs(&path).await {
                     self.state.docs = docs;
                 }
                 self.state.selected_doc_slug = Some(new_slug.clone());
@@ -1677,11 +1722,10 @@ impl App {
                         ..Default::default()
                     },
                 );
-            } else {
-                self.push_error("Failed to create doc");
             }
-        } else {
-            self.push_error("No project selected");
+            Err(e) => {
+                self.push_error(format!("Failed to create doc: {}", e));
+            }
         }
     }
 
