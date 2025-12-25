@@ -96,16 +96,28 @@ async fn run_app<B: ratatui::backend::Backend>(
         if event::poll(poll_duration)? {
             match event::read()? {
                 Event::Key(key) => {
-                    // Global Ctrl+C: copy selection if exists, otherwise quit (but not during splash)
-                    if key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
+                    // Check for copy shortcut: Ctrl+C or Cmd+C (Super+C on macOS)
+                    let is_copy_shortcut = key.code == KeyCode::Char('c')
+                        && (key.modifiers.contains(KeyModifiers::CONTROL)
+                            || key.modifiers.contains(KeyModifiers::SUPER));
+
+                    if is_copy_shortcut {
                         if app.state.selection.has_selection() {
+                            // Copy selection
                             if let Err(e) = app.copy_selection() {
                                 app.status_message = Some(format!("Copy failed: {}", e));
                             }
-                        } else if !in_splash {
-                            return Ok(());
+                            app.last_ctrl_c = None;
+                        } else if !in_splash && key.modifiers.contains(KeyModifiers::CONTROL) {
+                            // Double-tap Ctrl+C to quit (only for Ctrl, not Cmd)
+                            let now = std::time::Instant::now();
+                            if let Some(last) = app.last_ctrl_c {
+                                if now.duration_since(last).as_millis() < 500 {
+                                    return Ok(());
+                                }
+                            }
+                            app.last_ctrl_c = Some(now);
+                            app.status_message = Some("Press ^C again to quit".to_string());
                         }
                         continue;
                     }
