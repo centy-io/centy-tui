@@ -11,24 +11,51 @@ use ratatui::{
     Frame,
 };
 
-/// Draw issue create form
+/// Draw issue create form with action sidebar
 pub fn draw_create(frame: &mut Frame, area: Rect, app: &App) {
+    // Split into form (left) and action panel (right)
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(40),    // Form area
+            Constraint::Length(20), // Action panel
+        ])
+        .split(area);
+
+    let form_area = main_chunks[0];
+    let action_area = main_chunks[1];
+
+    // Draw form on the left
+    draw_create_form(frame, form_area, app);
+
+    // Draw action panel on the right
+    draw_create_action_panel(frame, action_area, app);
+}
+
+/// Draw the form fields
+fn draw_create_form(frame: &mut Frame, area: Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),             // Title
-            Constraint::Min(6),                // Description
-            Constraint::Length(3),             // Priority
-            Constraint::Length(BUTTON_HEIGHT), // Action buttons
-            Constraint::Length(1),             // Help text
+            Constraint::Length(3), // Title
+            Constraint::Min(6),    // Description
+            Constraint::Length(3), // Priority
         ])
         .margin(1)
         .split(area);
 
+    // Form is focused when not on action panel (field 0-2)
+    let form_focused = app.state.active_form_field < 3;
+    let border_color = if form_focused {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
+
     let block = Block::default()
         .title(" Create Issue ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(border_color));
     frame.render_widget(block, area);
 
     draw_field_with_value(
@@ -69,52 +96,56 @@ pub fn draw_create(frame: &mut Frame, area: Rect, app: &App) {
         app.state.active_form_field == 2,
         false,
     );
+}
 
-    // Get selected button from form state
-    let buttons_row_active = app.state.active_form_field == 3;
+/// Draw the action panel sidebar
+fn draw_create_action_panel(frame: &mut Frame, area: Rect, app: &App) {
+    // Action panel is focused when on field 3
+    let is_focused = app.state.active_form_field == 3;
     let selected_button = app.state.form_selected_button;
 
-    // Render action buttons
-    let button_area = chunks[3];
-    let button_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length(12), // Cancel
-            Constraint::Length(1),  // spacer
-            Constraint::Length(16), // Save as Draft
-            Constraint::Length(1),  // spacer
-            Constraint::Length(16), // Create & New
-            Constraint::Length(1),  // spacer
-            Constraint::Length(12), // Create
-            Constraint::Min(0),     // remaining space
-        ])
-        .split(button_area);
+    let border_color = if is_focused {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
 
+    let block = Block::default()
+        .title(" Actions ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+
+    let inner_area = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Layout for buttons vertically
+    let button_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(BUTTON_HEIGHT), // Create (primary)
+            Constraint::Length(BUTTON_HEIGHT), // Create & New
+            Constraint::Length(BUTTON_HEIGHT), // Save as Draft
+            Constraint::Length(BUTTON_HEIGHT), // Cancel
+            Constraint::Min(0),                // remaining space
+        ])
+        .split(inner_area);
+
+    // Render buttons (primary action first)
     render_action_button(
         frame,
         button_chunks[0],
-        "Cancel",
-        buttons_row_active && selected_button == 0,
+        "Create",
+        is_focused && selected_button == 0,
         true,
-        Some(Color::Gray),
+        Some(Color::Green),
         false,
     );
 
     render_action_button(
         frame,
-        button_chunks[2],
-        "Save as Draft",
-        buttons_row_active && selected_button == 1,
-        true,
-        Some(Color::Yellow),
-        false,
-    );
-
-    render_action_button(
-        frame,
-        button_chunks[4],
+        button_chunks[1],
         "Create & New",
-        buttons_row_active && selected_button == 2,
+        is_focused && selected_button == 1,
         true,
         Some(Color::Blue),
         false,
@@ -122,27 +153,23 @@ pub fn draw_create(frame: &mut Frame, area: Rect, app: &App) {
 
     render_action_button(
         frame,
-        button_chunks[6],
-        "Create",
-        buttons_row_active && selected_button == 3,
+        button_chunks[2],
+        "Save as Draft",
+        is_focused && selected_button == 2,
         true,
-        Some(Color::Green),
+        Some(Color::Yellow),
         false,
     );
 
-    // Help text
-    let help = Paragraph::new(Line::from(vec![
-        Span::styled("Tab", Style::default().fg(Color::Cyan)),
-        Span::raw(": next  "),
-        Span::styled("←/→", Style::default().fg(Color::Cyan)),
-        Span::raw(": select button  "),
-        Span::styled("Enter", Style::default().fg(Color::Cyan)),
-        Span::raw(": confirm  "),
-        Span::styled("Esc", Style::default().fg(Color::Cyan)),
-        Span::raw(": cancel"),
-    ]))
-    .style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(help, chunks[4]);
+    render_action_button(
+        frame,
+        button_chunks[3],
+        "Cancel",
+        is_focused && selected_button == 3,
+        true,
+        Some(Color::Gray),
+        false,
+    );
 }
 
 /// Draw issue edit form

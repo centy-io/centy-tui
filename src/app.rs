@@ -177,9 +177,9 @@ impl App {
     /// Handle a key event
     pub async fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         // Handle error dialog dismissal first (modal)
-        if self.state.error_dialog.is_some() {
+        if self.state.has_errors() {
             if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
-                self.state.error_dialog = None;
+                self.state.dismiss_error();
             }
             return Ok(());
         }
@@ -1057,21 +1057,57 @@ impl App {
 
     /// Handle keys in Issue Create view
     async fn handle_issue_create_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check if we're on the action panel (field 3)
+        let on_action_panel = self.state.active_form_field == 3;
+
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            // Save (Ctrl+S or Cmd+W / Ctrl+W)
+            // Up/Down for action panel navigation
+            KeyCode::Up | KeyCode::Char('k') if on_action_panel => {
+                if self.state.form_selected_button == 0 {
+                    self.state.form_selected_button = 3;
+                } else {
+                    self.state.form_selected_button -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') if on_action_panel => {
+                self.state.form_selected_button = (self.state.form_selected_button + 1) % 4;
+            }
+            // Enter on action panel triggers selected button
+            // Button order: 0=Create, 1=Create&New, 2=Draft, 3=Cancel
+            KeyCode::Enter if on_action_panel => {
+                match self.state.form_selected_button {
+                    0 => {
+                        // Create
+                        self.create_issue_with_options(false, false).await;
+                    }
+                    1 => {
+                        // Create & New
+                        self.create_issue_with_options(false, true).await;
+                    }
+                    2 => {
+                        // Save as Draft
+                        self.create_issue_with_options(true, false).await;
+                    }
+                    3 => {
+                        // Cancel
+                        self.state.clear_form();
+                        self.go_back();
+                    }
+                    _ => {}
+                }
+            }
+            // Keyboard shortcuts (work from anywhere)
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.create_issue_with_options(false, false).await;
             }
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 self.create_issue_with_options(false, false).await;
             }
-            // Save as Draft (Cmd+D / Ctrl+D)
             KeyCode::Char('d') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 self.create_issue_with_options(true, false).await;
             }
-            // Create & New (Cmd+N / Ctrl+N)
             KeyCode::Char('n') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
                 self.create_issue_with_options(false, true).await;
             }
@@ -1079,11 +1115,12 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char(c) => self
+            // Form field input (only when not on action panel)
+            KeyCode::Char(c) if !on_action_panel => self
                 .state
                 .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
-            KeyCode::Backspace => self.state.form_backspace(),
-            KeyCode::Enter => {
+            KeyCode::Backspace if !on_action_panel => self.state.form_backspace(),
+            KeyCode::Enter if !on_action_panel => {
                 // Enter in description field adds newline
                 if self.state.active_form_field == 1 {
                     self.state.form_description.push('\n');

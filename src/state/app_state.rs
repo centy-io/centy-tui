@@ -7,6 +7,7 @@ use super::SelectionState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 /// Current view in the application
@@ -581,7 +582,8 @@ pub struct AppState {
     pub scroll_offset: usize,
     pub daemon_connected: bool,
     pub confirm_action: Option<String>,
-    pub error_dialog: Option<String>,
+    /// Queue of error messages to display one at a time
+    pub error_queue: VecDeque<String>,
 
     // Issue detail action panel state
     pub issue_detail_focus: IssueDetailFocus,
@@ -1176,7 +1178,7 @@ impl AppState {
         self.form_slug.clear();
         self.form_source_branch.clear();
         self.form_target_branch.clear();
-        self.form_selected_button = 3; // Default to "Create" button
+        self.form_selected_button = 0; // Default to "Create" button (first in sidebar)
     }
 
     /// Load issue data into form for editing
@@ -1267,5 +1269,27 @@ impl AppState {
             View::DocDetail => matches!(self.doc_detail_focus, DocDetailFocus::ActionPanel),
             _ => false,
         }
+    }
+
+    // =========== Error Queue Management ===========
+
+    /// Add an error to the queue
+    pub fn push_error(&mut self, message: String) {
+        self.error_queue.push_back(message);
+    }
+
+    /// Get the current error (front of queue) without removing it
+    pub fn current_error(&self) -> Option<&String> {
+        self.error_queue.front()
+    }
+
+    /// Dismiss the current error (removes from front of queue)
+    pub fn dismiss_error(&mut self) {
+        self.error_queue.pop_front();
+    }
+
+    /// Check if there are any errors to display
+    pub fn has_errors(&self) -> bool {
+        !self.error_queue.is_empty()
     }
 }
