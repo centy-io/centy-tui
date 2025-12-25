@@ -1,6 +1,8 @@
 //! Layout components (header, sidebar, status bar)
 
-use super::components::{render_sidebar_button, BUTTON_HEIGHT};
+use super::components::{
+    render_scrollable_sidebar, ScrollableSidebarConfig, SidebarItem,
+};
 use crate::app::App;
 use crate::state::{PressedButton, View};
 use ratatui::{
@@ -58,65 +60,59 @@ pub fn create_layout_no_sidebar(area: Rect) -> Rect {
     chunks[0]
 }
 
-/// Draw the sidebar with boxed buttons
+/// Draw the sidebar with boxed buttons (scrollable when screen is small)
 pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     let has_project = app.state.selected_project_path.is_some();
 
-    // Create vertical layout for button boxes (centered vertically)
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),                // Top padding (flex)
-            Constraint::Length(BUTTON_HEIGHT), // Projects
-            Constraint::Length(BUTTON_HEIGHT), // Issues
-            Constraint::Length(BUTTON_HEIGHT), // PRs
-            Constraint::Length(BUTTON_HEIGHT), // Docs
-            Constraint::Length(BUTTON_HEIGHT), // Config
-            Constraint::Min(0),                // Bottom padding (flex)
-        ])
-        .split(area);
+    // Build sidebar items
+    let items: Vec<SidebarItem> = SIDEBAR_ITEMS
+        .iter()
+        .enumerate()
+        .map(|(idx, label)| {
+            let is_selected = match idx {
+                0 => matches!(app.state.current_view, View::Projects),
+                1 => matches!(
+                    app.state.current_view,
+                    View::Issues | View::IssueDetail | View::IssueCreate | View::IssueEdit
+                ),
+                2 => matches!(
+                    app.state.current_view,
+                    View::Prs | View::PrDetail | View::PrCreate | View::PrEdit
+                ),
+                3 => matches!(
+                    app.state.current_view,
+                    View::Docs | View::DocDetail | View::DocCreate
+                ),
+                4 => matches!(app.state.current_view, View::Config),
+                _ => false,
+            };
 
-    // Render each button
-    for (idx, label) in SIDEBAR_ITEMS.iter().enumerate() {
-        let is_selected = match idx {
-            0 => matches!(app.state.current_view, View::Projects),
-            1 => matches!(
-                app.state.current_view,
-                View::Issues | View::IssueDetail | View::IssueCreate | View::IssueEdit
-            ),
-            2 => matches!(
-                app.state.current_view,
-                View::Prs | View::PrDetail | View::PrCreate | View::PrEdit
-            ),
-            3 => matches!(
-                app.state.current_view,
-                View::Docs | View::DocDetail | View::DocCreate
-            ),
-            4 => matches!(app.state.current_view, View::Config),
-            _ => false,
-        };
+            // Check if item requires project selection
+            let requires_project = (1..=4).contains(&idx);
+            let is_enabled = !requires_project || has_project;
 
-        // Check if item requires project selection
-        let requires_project = (1..=4).contains(&idx);
-        let is_enabled = !requires_project || has_project;
+            // Check if this sidebar button is pressed for animation
+            let is_pressed = app
+                .state
+                .button_press
+                .as_ref()
+                .map(|bp| matches!(&bp.button, PressedButton::Sidebar(i) if *i == idx))
+                .unwrap_or(false);
 
-        // Check if this sidebar button is pressed for animation
-        let is_pressed = app
-            .state
-            .button_press
-            .as_ref()
-            .map(|bp| matches!(&bp.button, PressedButton::Sidebar(i) if *i == idx))
-            .unwrap_or(false);
+            SidebarItem::new(*label)
+                .selected(is_selected)
+                .enabled(is_enabled)
+                .pressed(is_pressed)
+        })
+        .collect();
 
-        render_sidebar_button(
-            frame,
-            chunks[idx + 1],
-            label,
-            is_selected,
-            is_enabled,
-            is_pressed,
-        );
-    }
+    render_scrollable_sidebar(
+        frame,
+        area,
+        &items,
+        app.state.sidebar_scroll_offset,
+        &ScrollableSidebarConfig::default(),
+    );
 }
 
 /// Draw the status bar

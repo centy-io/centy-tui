@@ -81,7 +81,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     // Draw error dialog last (on top of everything)
-    if let Some(error_msg) = &app.state.error_dialog {
+    if let Some(error_msg) = app.state.current_error() {
         components::render_error_dialog(frame, error_msg);
     }
 }
@@ -142,10 +142,11 @@ fn apply_selection_highlight(
     }
 }
 
-/// Render a dynamic action panel with boxed buttons
+/// Render a dynamic action panel with boxed buttons (scrollable when content exceeds area)
 ///
 /// This is a shared component used by Issues, PRs, and Docs views.
 pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused: bool) {
+    use components::{render_scrollable_sidebar, ScrollableSidebarConfig, SidebarItem};
     use ratatui::layout::{Constraint, Direction, Layout};
 
     let border_color = if is_focused {
@@ -192,37 +193,31 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
         return;
     }
 
-    // Build dynamic constraints for buttons
-    // Each category: 1 row label + N buttons (BUTTON_HEIGHT each)
-    let mut constraints: Vec<Constraint> = Vec::new();
-    let grouped = app.state.current_actions.grouped_actions();
-
-    for (_category, actions) in &grouped {
-        constraints.push(Constraint::Length(1)); // Category label
-        for _ in actions {
-            constraints.push(Constraint::Length(BUTTON_HEIGHT));
-        }
-    }
-    constraints.push(Constraint::Min(0)); // Help text area
-
+    // Split inner area: scrollable content + help text
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(constraints)
+        .constraints([
+            Constraint::Min(0),    // Scrollable content area
+            Constraint::Length(3), // Help text (3 lines)
+        ])
         .split(inner_area);
 
-    let mut chunk_idx = 0;
+    let content_area = chunks[0];
+    let help_area = chunks[1];
+
+    // Build sidebar items from grouped actions
+    let grouped = app.state.current_actions.grouped_actions();
+    let mut items: Vec<SidebarItem> = Vec::new();
     let mut action_idx = 0;
 
     for (category, actions) in &grouped {
-        // Render category label
-        let label = Paragraph::new(Span::styled(
-            format!("{}:", category.label().to_uppercase()),
-            Style::default().fg(Color::DarkGray),
-        ));
-        frame.render_widget(label, chunks[chunk_idx]);
-        chunk_idx += 1;
+        // Add category header
+        items.push(SidebarItem::header(format!(
+            "{}:",
+            category.label().to_uppercase()
+        )));
 
-        // Render action buttons
+        // Add action buttons
         for action in actions {
             let is_selected = is_focused && action_idx == selected_idx;
 
@@ -230,7 +225,7 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
             let label_color = if action.enabled {
                 Some(get_category_color(action.category, action.destructive))
             } else {
-                None // Will use disabled style
+                None
             };
 
             // Build label with optional shortcut hint
@@ -248,22 +243,33 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
                 .map(|bp| matches!(&bp.button, PressedButton::ActionPanel(i) if *i == action_idx))
                 .unwrap_or(false);
 
-            components::render_action_button(
-                frame,
-                chunks[chunk_idx],
-                &label,
-                is_selected,
-                action.enabled,
-                label_color,
-                is_pressed,
+            items.push(
+                SidebarItem::new(label)
+                    .selected(is_selected)
+                    .enabled(action.enabled)
+                    .pressed(is_pressed)
+                    .color(label_color),
             );
 
-            chunk_idx += 1;
             action_idx += 1;
         }
     }
 
-    // Render help text in remaining area
+    // Render scrollable sidebar (no centering for action panel)
+    let config = ScrollableSidebarConfig {
+        show_scroll_indicators: true,
+        center_content: false, // Action panel content aligns to top
+    };
+
+    render_scrollable_sidebar(
+        frame,
+        content_area,
+        &items,
+        app.state.sidebar_scroll_offset,
+        &config,
+    );
+
+    // Render help text
     let help_text = vec![
         Line::from(Span::styled(
             " j/k navigate",
@@ -279,7 +285,7 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
         )),
     ];
     let help = Paragraph::new(help_text);
-    frame.render_widget(help, chunks[chunk_idx]);
+    frame.render_widget(help, help_area);
 }
 
 /// Get color for an action category

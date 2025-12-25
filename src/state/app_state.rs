@@ -580,6 +580,8 @@ pub struct AppState {
 
     // UI state
     pub scroll_offset: usize,
+    /// Scroll offset for sidebars (nav sidebar and action panel share this)
+    pub sidebar_scroll_offset: usize,
     pub daemon_connected: bool,
     pub confirm_action: Option<String>,
     /// Queue of error messages to display one at a time

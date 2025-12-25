@@ -62,26 +62,6 @@ pub fn render_button(
     frame.render_widget(paragraph.block(block), area);
 }
 
-/// Render a sidebar button
-pub fn render_sidebar_button(
-    frame: &mut Frame,
-    area: Rect,
-    label: &str,
-    is_selected: bool,
-    is_enabled: bool,
-    is_pressed: bool,
-) {
-    render_button(
-        frame,
-        area,
-        label,
-        is_selected,
-        is_enabled,
-        is_pressed,
-        None,
-    );
-}
-
 /// Render an action panel button with optional custom label color
 pub fn render_action_button(
     frame: &mut Frame,

@@ -763,7 +763,7 @@ impl App {
                         .replace("Git error: ", "")
                         .replace("Worktree error: ", "")
                 };
-                self.state.error_dialog = Some(user_msg);
+                self.state.push_error(user_msg);
             }
         }
 
@@ -1796,8 +1796,29 @@ impl App {
 
     async fn handle_sidebar_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
         const SIDEBAR_WIDTH: u16 = 20;
-        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            if mouse.column < SIDEBAR_WIDTH {
+        const SIDEBAR_ITEM_COUNT: usize = 5;
+
+        // Only handle events within the sidebar area
+        if mouse.column >= SIDEBAR_WIDTH {
+            return Ok(false);
+        }
+
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                // Scroll sidebar up
+                self.state.sidebar_scroll_offset =
+                    self.state.sidebar_scroll_offset.saturating_sub(1);
+                return Ok(true);
+            }
+            MouseEventKind::ScrollDown => {
+                // Scroll sidebar down (max offset is items - visible)
+                let max_offset = SIDEBAR_ITEM_COUNT.saturating_sub(1);
+                if self.state.sidebar_scroll_offset < max_offset {
+                    self.state.sidebar_scroll_offset += 1;
+                }
+                return Ok(true);
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
                 let item_index = (mouse.row / BUTTON_HEIGHT) as usize;
                 let has_project = self.state.selected_project_path.is_some();
                 match item_index {
@@ -1839,6 +1860,7 @@ impl App {
                     _ => {}
                 }
             }
+            _ => {}
         }
         Ok(false)
     }
@@ -1849,13 +1871,32 @@ impl App {
         const LIST_ITEMS_START_Y: u16 = 3;
         const ACTION_PANEL_WIDTH: u16 = 22;
 
-        match mouse.kind {
-            MouseEventKind::ScrollUp => self.state.move_selection_up(),
-            MouseEventKind::ScrollDown => self.state.move_selection_down(list_len),
-            MouseEventKind::Down(MouseButton::Left) => {
-                let terminal_width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
-                let action_panel_start_x = terminal_width.saturating_sub(ACTION_PANEL_WIDTH);
+        let terminal_width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
+        let action_panel_start_x = terminal_width.saturating_sub(ACTION_PANEL_WIDTH);
+        let is_in_action_panel = mouse.column >= action_panel_start_x;
 
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                if is_in_action_panel {
+                    // Scroll action panel up
+                    self.state.sidebar_scroll_offset =
+                        self.state.sidebar_scroll_offset.saturating_sub(1);
+                } else {
+                    self.state.move_selection_up();
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if is_in_action_panel {
+                    // Scroll action panel down
+                    let max_offset = self.state.current_actions.actions.len().saturating_sub(1);
+                    if self.state.sidebar_scroll_offset < max_offset {
+                        self.state.sidebar_scroll_offset += 1;
+                    }
+                } else {
+                    self.state.move_selection_down(list_len);
+                }
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
                 // Check if click is in the action panel area
                 if mouse.column >= action_panel_start_x {
                     // Handle action panel click
