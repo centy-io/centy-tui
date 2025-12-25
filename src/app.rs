@@ -177,6 +177,9 @@ impl App {
             self.state.selection.clear();
         }
 
+        // Track view before handling key to detect navigation
+        let view_before = self.state.current_view.clone();
+
         match self.state.current_view {
             View::Splash => self.handle_splash_key(key).await?,
             View::Projects => self.handle_projects_key(key).await?,
@@ -192,6 +195,11 @@ impl App {
             View::DocDetail => self.handle_doc_detail_key(key).await?,
             View::DocCreate => self.handle_doc_create_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
+        }
+
+        // Refresh actions if view changed to one that shows action panel
+        if view_before != self.state.current_view {
+            self.refresh_current_actions().await;
         }
 
         Ok(())
@@ -592,6 +600,70 @@ impl App {
         Ok(())
     }
 
+    /// Update the current PR's status
+    async fn update_pr_status(&mut self, new_status: String) -> Result<()> {
+        let project_path = match &self.state.selected_project_path {
+            Some(path) => path.clone(),
+            None => {
+                self.status_message = Some("No project selected".to_string());
+                return Ok(());
+            }
+        };
+
+        let pr_id = match &self.state.selected_pr_id {
+            Some(id) => id.clone(),
+            None => {
+                self.status_message = Some("No PR selected".to_string());
+                return Ok(());
+            }
+        };
+
+        // Get current PR data
+        let (title, description, source_branch, target_branch) = {
+            let pr = self.state.prs.iter().find(|p| p.id == pr_id);
+            match pr {
+                Some(p) => (
+                    p.title.clone(),
+                    p.description.clone(),
+                    p.metadata.source_branch.clone(),
+                    p.metadata.target_branch.clone(),
+                ),
+                None => {
+                    self.status_message = Some("PR not found".to_string());
+                    return Ok(());
+                }
+            }
+        };
+
+        // Update the PR
+        match self
+            .daemon
+            .update_pr(
+                &project_path,
+                &pr_id,
+                &title,
+                &description,
+                &source_branch,
+                &target_branch,
+                &new_status,
+            )
+            .await
+        {
+            Ok(()) => {
+                // Refresh PRs list
+                if let Ok(prs) = self.daemon.list_prs(&project_path).await {
+                    self.state.prs = prs;
+                }
+                self.status_message = Some(format!("PR status updated to '{}'", new_status));
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Failed to update PR status: {}", e));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Execute the "Open in VSCode" action
     async fn execute_open_in_vscode(&mut self) -> Result<()> {
         let project_path = match &self.state.selected_project_path {
@@ -788,52 +860,94 @@ impl App {
         }
 
         // Route to appropriate handler based on action ID
+        // Action IDs from daemon are generic (e.g., "create", "delete")
+        // We determine the entity type from the current view
         match action.id.as_str() {
-            // Issue actions
-            "create_issue" => {
-                self.navigate(View::IssueCreate, ViewParams::default());
+            // Create action - contextual based on current view
+            "create" => {
+                match self.state.current_view {
+                    View::Issues | View::IssueDetail => {
+                        self.navigate(View::IssueCreate, ViewParams::default());
+                    }
+                    View::Prs | View::PrDetail => {
+                        self.navigate(View::PrCreate, ViewParams::default());
+                    }
+                    View::Docs | View::DocDetail => {
+                        self.navigate(View::DocCreate, ViewParams::default());
+                    }
+                    _ => {}
+                }
             }
-            "delete_issue" => {
-                self.delete_selected_issue().await?;
+
+            // Delete action - contextual based on current view
+            "delete" => {
+                match self.state.current_view {
+                    View::Issues | View::IssueDetail => {
+                        self.delete_selected_issue().await?;
+                    }
+                    View::Prs | View::PrDetail => {
+                        self.status_message = Some("Delete PR: Not yet implemented".to_string());
+                    }
+                    View::Docs | View::DocDetail => {
+                        self.status_message = Some("Delete doc: Not yet implemented".to_string());
+                    }
+                    _ => {}
+                }
             }
-            "move_issue" => {
-                self.status_message = Some("Move issue: Not yet implemented".to_string());
+
+            // Duplicate action - contextual based on current view
+            "duplicate" => {
+                match self.state.current_view {
+                    View::Issues | View::IssueDetail => {
+                        self.status_message = Some("Duplicate issue: Not yet implemented".to_string());
+                    }
+                    View::Docs | View::DocDetail => {
+                        self.status_message = Some("Duplicate doc: Not yet implemented".to_string());
+                    }
+                    _ => {}
+                }
             }
-            "duplicate_issue" => {
-                self.status_message = Some("Duplicate issue: Not yet implemented".to_string());
+
+            // Move action - contextual based on current view
+            "move" => {
+                match self.state.current_view {
+                    View::Issues | View::IssueDetail => {
+                        self.status_message = Some("Move issue: Not yet implemented".to_string());
+                    }
+                    View::Docs | View::DocDetail => {
+                        self.status_message = Some("Move doc: Not yet implemented".to_string());
+                    }
+                    _ => {}
+                }
             }
-            "open_vscode" => {
-                self.execute_open_in_vscode().await?;
-            }
-            "set_mode_plan" => {
+
+            // Mode actions (Issue-specific)
+            "mode:plan" => {
                 self.state.action_panel_llm_action = LlmAction::Plan;
                 self.status_message = Some("Mode set to Plan".to_string());
             }
-            "set_mode_implement" => {
+            "mode:implement" => {
                 self.state.action_panel_llm_action = LlmAction::Implement;
                 self.status_message = Some("Mode set to Implement".to_string());
             }
 
-            // PR actions
-            "create_pr" => {
-                self.navigate(View::PrCreate, ViewParams::default());
-            }
-            "delete_pr" => {
-                self.status_message = Some("Delete PR: Not yet implemented".to_string());
-            }
-
-            // Doc actions
-            "create_doc" => {
-                self.navigate(View::DocCreate, ViewParams::default());
-            }
-            "delete_doc" => {
-                self.status_message = Some("Delete doc: Not yet implemented".to_string());
+            // External actions
+            "open_in_vscode" => {
+                self.execute_open_in_vscode().await?;
             }
 
             // Status transitions (dynamic, e.g., "status:open", "status:closed")
             id if id.starts_with("status:") => {
                 let new_status = id.strip_prefix("status:").unwrap_or("");
-                self.update_issue_status(new_status.to_string()).await?;
+                match self.state.current_view {
+                    View::Issues | View::IssueDetail => {
+                        self.update_issue_status(new_status.to_string()).await?;
+                    }
+                    View::Prs | View::PrDetail => {
+                        self.update_pr_status(new_status.to_string()).await?;
+                    }
+                    _ => {}
+                }
             }
 
             _ => {
@@ -1407,12 +1521,19 @@ impl App {
             _ => {}
         }
 
+        // Track view before handling mouse to detect navigation
+        let view_before = self.state.current_view.clone();
+
         // Only check sidebar mouse if sidebar is visible (project selected)
         let has_project = self.state.selected_project_path.is_some();
         if has_project
             && self.state.current_view != View::Splash
             && self.handle_sidebar_mouse(mouse).await?
         {
+            // Refresh actions if view changed via sidebar
+            if view_before != self.state.current_view {
+                self.refresh_current_actions().await;
+            }
             return Ok(());
         }
         match self.state.current_view {
@@ -1435,6 +1556,12 @@ impl App {
             View::DocCreate => self.handle_form_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
         }
+
+        // Refresh actions if view changed to one that shows action panel
+        if view_before != self.state.current_view {
+            self.refresh_current_actions().await;
+        }
+
         Ok(())
     }
 
