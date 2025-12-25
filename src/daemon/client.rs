@@ -52,6 +52,21 @@ pub struct OpenInTerminalResult {
     pub expires_at: String,
 }
 
+/// A temporary workspace entry
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct TempWorkspace {
+    pub workspace_path: String,
+    pub source_project_path: String,
+    pub issue_id: String,
+    pub issue_display_number: u32,
+    pub issue_title: String,
+    pub agent_name: String,
+    pub action: i32,
+    pub created_at: String,
+    pub expires_at: String,
+}
+
 impl DaemonClient {
     /// Create a new daemon client
     pub async fn new() -> Result<Self> {
@@ -696,6 +711,62 @@ impl DaemonClient {
         })
     }
 
+    /// List temporary workspaces, optionally filtered by project path
+    pub async fn list_temp_workspaces(&mut self, project_path: &str) -> Result<Vec<TempWorkspace>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ListTempWorkspacesRequest {
+            include_expired: false,
+            source_project_path: project_path.to_string(),
+        });
+
+        let response = client
+            .list_temp_workspaces(request)
+            .await
+            .map_err(|e| anyhow!("Failed to list temp workspaces: {}", e))?;
+
+        let workspaces = response
+            .into_inner()
+            .workspaces
+            .into_iter()
+            .map(|w| TempWorkspace {
+                workspace_path: w.workspace_path,
+                source_project_path: w.source_project_path,
+                issue_id: w.issue_id,
+                issue_display_number: w.issue_display_number,
+                issue_title: w.issue_title,
+                agent_name: w.agent_name,
+                action: w.action,
+                created_at: w.created_at,
+                expires_at: w.expires_at,
+            })
+            .collect();
+
+        Ok(workspaces)
+    }
+
+    /// Close a temporary workspace
+    pub async fn close_temp_workspace(&mut self, workspace_path: &str, force: bool) -> Result<()> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::CloseTempWorkspaceRequest {
+            workspace_path: workspace_path.to_string(),
+            force,
+        });
+
+        let response = client
+            .close_temp_workspace(request)
+            .await
+            .map_err(|e| anyhow!("Failed to close temp workspace: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to close temp workspace: {}", inner.error));
+        }
+
+        Ok(())
+    }
+
     /// Restart the daemon
     #[allow(dead_code)]
     pub async fn restart(&mut self) -> Result<()> {
@@ -971,6 +1042,14 @@ impl DaemonClientTrait for DaemonClient {
             ttl_hours,
         )
         .await
+    }
+
+    async fn list_temp_workspaces(&mut self, project_path: &str) -> Result<Vec<TempWorkspace>> {
+        DaemonClient::list_temp_workspaces(self, project_path).await
+    }
+
+    async fn close_temp_workspace(&mut self, workspace_path: &str, force: bool) -> Result<()> {
+        DaemonClient::close_temp_workspace(self, workspace_path, force).await
     }
 
     async fn restart(&mut self) -> Result<()> {

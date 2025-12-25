@@ -82,6 +82,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         apply_selection_highlight(frame, &app.state.selection, area);
     }
 
+    // Draw worktree dialog (on top of everything except error)
+    if let Some(ref action) = app.state.pending_worktree_action {
+        components::render_worktree_dialog(frame, action);
+    }
+
     // Draw error dialog last (on top of everything)
     if let Some(error_msg) = app.state.current_error() {
         components::render_error_dialog(frame, error_msg);

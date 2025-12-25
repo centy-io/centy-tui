@@ -3,8 +3,8 @@
 use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
-    IssuesListFocus, LlmAction, LogoStyle, PrDetailFocus, PressedButton, PrsListFocus,
-    ScreenBuffer, ScreenPos, SplashState, View, ViewParams,
+    IssuesListFocus, LlmAction, LogoStyle, PendingWorktreeAction, PrDetailFocus, PressedButton,
+    PrsListFocus, ScreenBuffer, ScreenPos, SplashState, View, ViewParams, WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -235,6 +235,12 @@ impl App {
             if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
                 self.state.dismiss_error();
             }
+            return Ok(());
+        }
+
+        // Handle worktree dialog (modal)
+        if self.state.pending_worktree_action.is_some() {
+            self.handle_worktree_dialog_key(key).await?;
             return Ok(());
         }
 
@@ -809,24 +815,48 @@ impl App {
             Err(e) => {
                 let error_str = e.to_string();
                 let error_lower = error_str.to_lowercase();
-                let user_msg = if error_str.contains("detached HEAD") {
-                    "Repository is in detached HEAD state.\nCheckout a branch first: git checkout <branch>".to_string()
-                } else if error_lower.contains("worktree") {
-                    "Failed to create git worktree.\nTry closing other VS Code windows for this project.".to_string()
+
+                // Check if this is a worktree/folder exists error
+                if error_lower.contains("worktree") || error_lower.contains("already exists") {
+                    // Try to find existing workspace for this issue
+                    if let Ok(workspaces) = self.daemon.list_temp_workspaces(&project_path).await {
+                        // Find workspace matching this issue
+                        if let Some(existing) = workspaces.into_iter().find(|w| {
+                            w.issue_id == issue_id || w.issue_display_number.to_string() == issue_id
+                        }) {
+                            // Show dialog to let user choose action
+                            self.state.pending_worktree_action = Some(PendingWorktreeAction {
+                                project_path: project_path.clone(),
+                                issue_id: issue_id.clone(),
+                                action,
+                                existing_workspace: existing,
+                                selected_option: WorktreeDialogOption::OpenExisting,
+                            });
+                            self.copy_message = None;
+                            return Ok(());
+                        }
+                    }
+                    // Fallback to error message if we couldn't find existing workspace
+                    self.push_error("Failed to create git worktree.\nTry closing other VS Code windows for this project.");
+                } else if error_str.contains("detached HEAD") {
+                    self.push_error("Repository is in detached HEAD state.\nCheckout a branch first: git checkout <branch>");
                 } else if error_lower.contains("not a git repository") {
-                    "This project is not a git repository.\nInitialize with: git init".to_string()
+                    self.push_error(
+                        "This project is not a git repository.\nInitialize with: git init",
+                    );
                 } else if error_lower.contains("not found") && error_lower.contains("vscode") {
-                    "VS Code not found.\nInstall it and add 'code' to PATH.".to_string()
+                    self.push_error("VS Code not found.\nInstall it and add 'code' to PATH.");
                 } else if error_lower.contains("connection") {
-                    "Cannot connect to centy daemon.\nIs it running? Try: centy daemon start"
-                        .to_string()
+                    self.push_error(
+                        "Cannot connect to centy daemon.\nIs it running? Try: centy daemon start",
+                    );
                 } else {
                     // Clean up nested error prefixes for unknown errors
-                    error_str
+                    let user_msg = error_str
                         .replace("Git error: ", "")
-                        .replace("Worktree error: ", "")
-                };
-                self.push_error(user_msg);
+                        .replace("Worktree error: ", "");
+                    self.push_error(user_msg);
+                }
             }
         }
 
@@ -1897,6 +1927,109 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    /// Handle keys for the worktree dialog
+    async fn handle_worktree_dialog_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            // Cancel - dismiss dialog
+            KeyCode::Esc => {
+                self.state.pending_worktree_action = None;
+            }
+            // Navigate between options
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => {
+                if let Some(ref mut action) = self.state.pending_worktree_action {
+                    action.selected_option = action.selected_option.toggle();
+                }
+            }
+            // Confirm selection
+            KeyCode::Enter => {
+                if let Some(action) = self.state.pending_worktree_action.take() {
+                    match action.selected_option {
+                        WorktreeDialogOption::OpenExisting => {
+                            // Open VS Code at the existing workspace path
+                            self.open_vscode_at_path(&action.existing_workspace.workspace_path)
+                                .await;
+                        }
+                        WorktreeDialogOption::DeleteAndRecreate => {
+                            // Delete the existing workspace and retry
+                            self.copy_message = Some("Deleting workspace...".to_string());
+                            if self
+                                .daemon
+                                .close_temp_workspace(
+                                    &action.existing_workspace.workspace_path,
+                                    true,
+                                )
+                                .await
+                                .is_ok()
+                            {
+                                // Retry opening
+                                self.copy_message = Some("Recreating workspace...".to_string());
+                                match self
+                                    .daemon
+                                    .open_in_temp_vscode(
+                                        &action.project_path,
+                                        &action.issue_id,
+                                        action.action,
+                                        "",
+                                        0,
+                                    )
+                                    .await
+                                {
+                                    Ok(result) => {
+                                        if result.vscode_opened {
+                                            self.copy_message = Some(format!(
+                                                "Opened #{} in VSCode (expires: {})",
+                                                result.display_number,
+                                                result
+                                                    .expires_at
+                                                    .split('T')
+                                                    .next()
+                                                    .unwrap_or(&result.expires_at)
+                                            ));
+                                        } else {
+                                            self.copy_message = Some(format!(
+                                                "Workspace created at {}",
+                                                result.workspace_path
+                                            ));
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.push_error(format!(
+                                            "Failed to recreate workspace: {}",
+                                            e
+                                        ));
+                                    }
+                                }
+                            } else {
+                                self.push_error(
+                                    "Failed to delete existing workspace.\nPlease close VS Code and try again.",
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Open VS Code at a specific path
+    async fn open_vscode_at_path(&mut self, workspace_path: &str) {
+        // Use the 'code' command to open VS Code at the workspace path
+        // This will focus an existing window if one is open for this path
+        match std::process::Command::new("code")
+            .arg(workspace_path)
+            .spawn()
+        {
+            Ok(_) => {
+                self.copy_message = Some(format!("Opening existing workspace: {}", workspace_path));
+            }
+            Err(e) => {
+                self.push_error(format!("Failed to open VS Code: {}", e));
+            }
+        }
     }
 
     /// Handle keys in Splash screen

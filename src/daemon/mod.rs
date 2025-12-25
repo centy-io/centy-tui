@@ -3,7 +3,7 @@
 mod client;
 mod traits;
 
-pub use client::DaemonClient;
+pub use client::{DaemonClient, TempWorkspace};
 
 #[cfg(test)]
 #[allow(unused_imports)]

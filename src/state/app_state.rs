@@ -4,6 +4,7 @@ use super::forms::{
     DocCreateForm, FormState, IssueCreateForm, IssueEditForm, PrCreateForm, PrEditForm,
 };
 use super::SelectionState;
+use crate::daemon::TempWorkspace;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -547,6 +548,40 @@ impl ButtonPressState {
     }
 }
 
+/// Options for handling existing worktree
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WorktreeDialogOption {
+    #[default]
+    OpenExisting,
+    DeleteAndRecreate,
+}
+
+impl WorktreeDialogOption {
+    pub fn toggle(&self) -> Self {
+        match self {
+            Self::OpenExisting => Self::DeleteAndRecreate,
+            Self::DeleteAndRecreate => Self::OpenExisting,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::OpenExisting => "Open existing workspace",
+            Self::DeleteAndRecreate => "Delete and recreate",
+        }
+    }
+}
+
+/// Pending worktree action when a workspace already exists
+#[derive(Debug, Clone)]
+pub struct PendingWorktreeAction {
+    pub project_path: String,
+    pub issue_id: String,
+    pub action: i32,
+    pub existing_workspace: TempWorkspace,
+    pub selected_option: WorktreeDialogOption,
+}
+
 /// Main application state
 #[derive(Default)]
 pub struct AppState {
@@ -590,6 +625,8 @@ pub struct AppState {
     pub sidebar_scroll_offset: usize,
     pub daemon_connected: bool,
     pub confirm_action: Option<String>,
+    /// Pending worktree action when a workspace already exists
+    pub pending_worktree_action: Option<PendingWorktreeAction>,
     /// Queue of error messages to display one at a time
     pub error_queue: VecDeque<String>,
 

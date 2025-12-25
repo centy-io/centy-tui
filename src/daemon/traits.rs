@@ -6,7 +6,7 @@ use crate::state::{
 use anyhow::Result;
 use async_trait::async_trait;
 
-use super::client::{proto, OpenInTerminalResult, OpenInVscodeResult};
+use super::client::{proto, OpenInTerminalResult, OpenInVscodeResult, TempWorkspace};
 
 /// Trait for daemon client operations, enabling mocking in tests
 #[allow(dead_code)]
@@ -120,6 +120,12 @@ pub trait DaemonClientTrait: Send + Sync {
         workspace_mode: i32,
         ttl_hours: u32,
     ) -> Result<OpenInTerminalResult>;
+
+    /// List temporary workspaces, optionally filtered by project path
+    async fn list_temp_workspaces(&mut self, project_path: &str) -> Result<Vec<TempWorkspace>>;
+
+    /// Close a temporary workspace
+    async fn close_temp_workspace(&mut self, workspace_path: &str, force: bool) -> Result<()>;
 
     /// Restart the daemon
     async fn restart(&mut self) -> Result<()>;
