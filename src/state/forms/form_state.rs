@@ -75,11 +75,21 @@ impl FormState {
     pub fn is_active_field_multiline(&self) -> bool {
         match self {
             FormState::None => false,
-            FormState::IssueCreate(f) => f.get_field(f.active_field()).map_or(false, |f| f.is_multiline),
-            FormState::IssueEdit(f) => f.get_field(f.active_field()).map_or(false, |f| f.is_multiline),
-            FormState::PrCreate(f) => f.get_field(f.active_field()).map_or(false, |f| f.is_multiline),
-            FormState::PrEdit(f) => f.get_field(f.active_field()).map_or(false, |f| f.is_multiline),
-            FormState::DocCreate(f) => f.get_field(f.active_field()).map_or(false, |f| f.is_multiline),
+            FormState::IssueCreate(f) => f
+                .get_field(f.active_field())
+                .map_or(false, |f| f.is_multiline),
+            FormState::IssueEdit(f) => f
+                .get_field(f.active_field())
+                .map_or(false, |f| f.is_multiline),
+            FormState::PrCreate(f) => f
+                .get_field(f.active_field())
+                .map_or(false, |f| f.is_multiline),
+            FormState::PrEdit(f) => f
+                .get_field(f.active_field())
+                .map_or(false, |f| f.is_multiline),
+            FormState::DocCreate(f) => f
+                .get_field(f.active_field())
+                .map_or(false, |f| f.is_multiline),
         }
     }
 }
@@ -105,13 +115,21 @@ impl IssueCreateForm {
 }
 
 impl Default for IssueCreateForm {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Form for IssueCreateForm {
-    fn field_count(&self) -> usize { 3 }
-    fn active_field(&self) -> usize { self.active_field_index }
-    fn set_active_field(&mut self, index: usize) { self.active_field_index = index.min(2); }
+    fn field_count(&self) -> usize {
+        3
+    }
+    fn active_field(&self) -> usize {
+        self.active_field_index
+    }
+    fn set_active_field(&mut self, index: usize) {
+        self.active_field_index = index.min(2);
+    }
     fn get_active_field_mut(&mut self) -> &mut FormField {
         match self.active_field_index {
             0 => &mut self.title,
@@ -143,18 +161,38 @@ impl IssueEditForm {
     pub fn from_issue(issue: &Issue) -> Self {
         Self {
             title: FormField::text_with_value("title", "Title", issue.title.clone(), false),
-            description: FormField::text_with_value("description", "Description", issue.description.clone(), true),
-            priority: FormField::priority_with_value("priority", "Priority (1-3)", issue.metadata.priority),
-            status: FormField::text_with_value("status", "Status", issue.metadata.status.clone(), false),
+            description: FormField::text_with_value(
+                "description",
+                "Description",
+                issue.description.clone(),
+                true,
+            ),
+            priority: FormField::priority_with_value(
+                "priority",
+                "Priority (1-3)",
+                issue.metadata.priority,
+            ),
+            status: FormField::text_with_value(
+                "status",
+                "Status",
+                issue.metadata.status.clone(),
+                false,
+            ),
             active_field_index: 0,
         }
     }
 }
 
 impl Form for IssueEditForm {
-    fn field_count(&self) -> usize { 4 }
-    fn active_field(&self) -> usize { self.active_field_index }
-    fn set_active_field(&mut self, index: usize) { self.active_field_index = index.min(3); }
+    fn field_count(&self) -> usize {
+        4
+    }
+    fn active_field(&self) -> usize {
+        self.active_field_index
+    }
+    fn set_active_field(&mut self, index: usize) {
+        self.active_field_index = index.min(3);
+    }
     fn get_active_field_mut(&mut self) -> &mut FormField {
         match self.active_field_index {
             0 => &mut self.title,
@@ -199,18 +237,30 @@ impl PrCreateForm {
 
     pub fn target_branch_or_default(&self) -> &str {
         let value = self.target_branch.as_text();
-        if value.is_empty() { "main" } else { value }
+        if value.is_empty() {
+            "main"
+        } else {
+            value
+        }
     }
 }
 
 impl Default for PrCreateForm {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Form for PrCreateForm {
-    fn field_count(&self) -> usize { 5 }
-    fn active_field(&self) -> usize { self.active_field_index }
-    fn set_active_field(&mut self, index: usize) { self.active_field_index = index.min(4); }
+    fn field_count(&self) -> usize {
+        5
+    }
+    fn active_field(&self) -> usize {
+        self.active_field_index
+    }
+    fn set_active_field(&mut self, index: usize) {
+        self.active_field_index = index.min(4);
+    }
     fn get_active_field_mut(&mut self) -> &mut FormField {
         match self.active_field_index {
             0 => &mut self.title,
@@ -248,20 +298,46 @@ impl PrEditForm {
     pub fn from_pr(pr: &PullRequest) -> Self {
         Self {
             title: FormField::text_with_value("title", "Title", pr.title.clone(), false),
-            description: FormField::text_with_value("description", "Description", pr.description.clone(), true),
-            source_branch: FormField::text_with_value("source_branch", "Source Branch", pr.metadata.source_branch.clone(), false),
-            target_branch: FormField::text_with_value("target_branch", "Target Branch", pr.metadata.target_branch.clone(), false),
+            description: FormField::text_with_value(
+                "description",
+                "Description",
+                pr.description.clone(),
+                true,
+            ),
+            source_branch: FormField::text_with_value(
+                "source_branch",
+                "Source Branch",
+                pr.metadata.source_branch.clone(),
+                false,
+            ),
+            target_branch: FormField::text_with_value(
+                "target_branch",
+                "Target Branch",
+                pr.metadata.target_branch.clone(),
+                false,
+            ),
             priority: FormField::priority_with_value("priority", "Priority", pr.metadata.priority),
-            status: FormField::text_with_value("status", "Status", pr.metadata.status.clone(), false),
+            status: FormField::text_with_value(
+                "status",
+                "Status",
+                pr.metadata.status.clone(),
+                false,
+            ),
             active_field_index: 0,
         }
     }
 }
 
 impl Form for PrEditForm {
-    fn field_count(&self) -> usize { 6 }
-    fn active_field(&self) -> usize { self.active_field_index }
-    fn set_active_field(&mut self, index: usize) { self.active_field_index = index.min(5); }
+    fn field_count(&self) -> usize {
+        6
+    }
+    fn active_field(&self) -> usize {
+        self.active_field_index
+    }
+    fn set_active_field(&mut self, index: usize) {
+        self.active_field_index = index.min(5);
+    }
     fn get_active_field_mut(&mut self) -> &mut FormField {
         match self.active_field_index {
             0 => &mut self.title,
@@ -306,13 +382,21 @@ impl DocCreateForm {
 }
 
 impl Default for DocCreateForm {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Form for DocCreateForm {
-    fn field_count(&self) -> usize { 3 }
-    fn active_field(&self) -> usize { self.active_field_index }
-    fn set_active_field(&mut self, index: usize) { self.active_field_index = index.min(2); }
+    fn field_count(&self) -> usize {
+        3
+    }
+    fn active_field(&self) -> usize {
+        self.active_field_index
+    }
+    fn set_active_field(&mut self, index: usize) {
+        self.active_field_index = index.min(2);
+    }
     fn get_active_field_mut(&mut self) -> &mut FormField {
         match self.active_field_index {
             0 => &mut self.title,

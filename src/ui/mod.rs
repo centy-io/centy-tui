@@ -123,8 +123,9 @@ fn apply_selection_highlight(
         if selection.keyboard_mode {
             if let Some(cursor_pos) = selection.keyboard_cursor {
                 if cursor_pos.col < area.width && cursor_pos.row < area.height {
-                    if let Some(cell) =
-                        frame.buffer_mut().cell_mut((cursor_pos.col, cursor_pos.row))
+                    if let Some(cell) = frame
+                        .buffer_mut()
+                        .cell_mut((cursor_pos.col, cursor_pos.row))
                     {
                         let current_style = cell.style();
                         cell.set_style(current_style.add_modifier(Modifier::SLOW_BLINK));

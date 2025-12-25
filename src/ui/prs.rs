@@ -1,8 +1,8 @@
 //! Pull Request list and detail views
 
+use super::render_scrollable_list;
 use crate::app::App;
 use crate::state::{PrDetailFocus, PrsListFocus};
-use super::render_scrollable_list;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

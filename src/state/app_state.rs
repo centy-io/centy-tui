@@ -1,6 +1,8 @@
 //! Application state definitions
 
-use super::forms::{Form, FormState, IssueCreateForm, IssueEditForm, PrCreateForm, PrEditForm, DocCreateForm};
+use super::forms::{
+    DocCreateForm, Form, FormState, IssueCreateForm, IssueEditForm, PrCreateForm, PrEditForm,
+};
 use super::SelectionState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -934,7 +936,9 @@ impl AppState {
 
     /// Get currently selected action
     pub fn selected_action(&self) -> Option<&EntityAction> {
-        self.current_actions.actions.get(self.action_panel_selected_index)
+        self.current_actions
+            .actions
+            .get(self.action_panel_selected_index)
     }
 
     /// Navigate action panel up
