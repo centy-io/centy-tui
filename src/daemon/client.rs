@@ -40,6 +40,18 @@ pub struct OpenInVscodeResult {
     pub vscode_opened: bool,
 }
 
+/// Result from opening an agent in a terminal
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct OpenInTerminalResult {
+    pub working_directory: String,
+    pub issue_id: String,
+    pub display_number: u32,
+    pub agent_command: String,
+    pub terminal_opened: bool,
+    pub expires_at: String,
+}
+
 impl DaemonClient {
     /// Create a new daemon client
     pub async fn new() -> Result<Self> {
@@ -378,6 +390,7 @@ impl DaemonClient {
         title: &str,
         description: &str,
         priority: u32,
+        draft: bool,
     ) -> Result<String> {
         let client = self.ensure_connected().await?;
 
@@ -389,7 +402,7 @@ impl DaemonClient {
             status: String::new(),
             custom_fields: HashMap::new(),
             template: String::new(),
-            draft: false,
+            draft,
         });
 
         let response = client
@@ -606,6 +619,45 @@ impl DaemonClient {
             display_number: inner.display_number,
             expires_at: inner.expires_at,
             vscode_opened: inner.vscode_opened,
+        })
+    }
+
+    /// Open an agent in a terminal for working on an issue
+    pub async fn open_agent_in_terminal(
+        &mut self,
+        project_path: &str,
+        issue_id: &str,
+        agent_name: &str,
+        workspace_mode: i32,
+        ttl_hours: u32,
+    ) -> Result<OpenInTerminalResult> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::OpenAgentInTerminalRequest {
+            project_path: project_path.to_string(),
+            issue_id: issue_id.to_string(),
+            agent_name: agent_name.to_string(),
+            workspace_mode,
+            ttl_hours,
+        });
+
+        let response = client
+            .open_agent_in_terminal(request)
+            .await
+            .map_err(|e| anyhow!("Failed to open agent in terminal: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to open agent in terminal: {}", inner.error));
+        }
+
+        Ok(OpenInTerminalResult {
+            working_directory: inner.working_directory,
+            issue_id: inner.issue_id,
+            display_number: inner.display_number,
+            agent_command: inner.agent_command,
+            terminal_opened: inner.terminal_opened,
+            expires_at: inner.expires_at,
         })
     }
 
