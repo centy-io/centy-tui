@@ -8,6 +8,7 @@ mod issues;
 mod layout;
 mod projects;
 mod prs;
+mod sidebar;
 mod splash;
 mod widgets;
 
@@ -44,7 +45,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let main_area = if show_sidebar {
         // Draw the main layout with sidebar
         let (sidebar_area, main_area) = layout::create_layout(area);
-        layout::draw_sidebar(frame, sidebar_area, app);
+        sidebar::draw_sidebar(frame, sidebar_area, app);
         main_area
     } else {
         // Full-width layout without sidebar
@@ -146,7 +147,7 @@ fn apply_selection_highlight(
 ///
 /// This is a shared component used by Issues, PRs, and Docs views.
 pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused: bool) {
-    use components::{render_scrollable_sidebar, ScrollableSidebarConfig, SidebarItem};
+    use components::{render_vertical_button_group, ButtonGroupItem, VerticalButtonGroupConfig};
     use ratatui::layout::{Constraint, Direction, Layout};
 
     let border_color = if is_focused {
@@ -205,14 +206,14 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
     let content_area = chunks[0];
     let help_area = chunks[1];
 
-    // Build sidebar items from grouped actions
+    // Build button group items from grouped actions
     let grouped = app.state.current_actions.grouped_actions();
-    let mut items: Vec<SidebarItem> = Vec::new();
+    let mut items: Vec<ButtonGroupItem> = Vec::new();
     let mut action_idx = 0;
 
     for (category, actions) in &grouped {
         // Add category header
-        items.push(SidebarItem::header(format!(
+        items.push(ButtonGroupItem::header(format!(
             "{}:",
             category.label().to_uppercase()
         )));
@@ -244,7 +245,7 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
                 .unwrap_or(false);
 
             items.push(
-                SidebarItem::new(label)
+                ButtonGroupItem::new(label)
                     .selected(is_selected)
                     .enabled(action.enabled)
                     .pressed(is_pressed)
@@ -255,13 +256,13 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
         }
     }
 
-    // Render scrollable sidebar (no centering for action panel)
-    let config = ScrollableSidebarConfig {
+    // Render vertical button group (no centering for action panel)
+    let config = VerticalButtonGroupConfig {
         show_scroll_indicators: true,
         center_content: false, // Action panel content aligns to top
     };
 
-    render_scrollable_sidebar(
+    render_vertical_button_group(
         frame,
         content_area,
         &items,

@@ -1,4 +1,4 @@
-//! Scrollable sidebar component for vertical button lists
+//! Vertical button group component for scrollable button lists
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -13,15 +13,15 @@ use super::button::{render_button, BUTTON_HEIGHT};
 /// Height for header items (category labels)
 pub const HEADER_HEIGHT: u16 = 1;
 
-/// Configuration for the scrollable sidebar
-pub struct ScrollableSidebarConfig {
+/// Configuration for the vertical button group
+pub struct VerticalButtonGroupConfig {
     /// Whether to show scroll indicators when content is clipped
     pub show_scroll_indicators: bool,
     /// Whether to vertically center content when it fits
     pub center_content: bool,
 }
 
-impl Default for ScrollableSidebarConfig {
+impl Default for VerticalButtonGroupConfig {
     fn default() -> Self {
         Self {
             show_scroll_indicators: true,
@@ -30,30 +30,30 @@ impl Default for ScrollableSidebarConfig {
     }
 }
 
-/// Type of sidebar item
+/// Type of button group item
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum SidebarItemKind {
+pub enum ButtonGroupItemKind {
     /// A clickable button (height = BUTTON_HEIGHT)
     Button,
     /// A category header label (height = HEADER_HEIGHT)
     Header,
 }
 
-/// A single item in the scrollable sidebar
-pub struct SidebarItem {
+/// A single item in the vertical button group
+pub struct ButtonGroupItem {
     pub label: String,
-    pub kind: SidebarItemKind,
+    pub kind: ButtonGroupItemKind,
     pub is_selected: bool,
     pub is_enabled: bool,
     pub is_pressed: bool,
     pub label_color: Option<Color>,
 }
 
-impl SidebarItem {
+impl ButtonGroupItem {
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
-            kind: SidebarItemKind::Button,
+            kind: ButtonGroupItemKind::Button,
             is_selected: false,
             is_enabled: true,
             is_pressed: false,
@@ -65,7 +65,7 @@ impl SidebarItem {
     pub fn header(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
-            kind: SidebarItemKind::Header,
+            kind: ButtonGroupItemKind::Header,
             is_selected: false,
             is_enabled: true,
             is_pressed: false,
@@ -96,19 +96,19 @@ impl SidebarItem {
     /// Get the height of this item
     pub fn height(&self) -> u16 {
         match self.kind {
-            SidebarItemKind::Button => BUTTON_HEIGHT,
-            SidebarItemKind::Header => HEADER_HEIGHT,
+            ButtonGroupItemKind::Button => BUTTON_HEIGHT,
+            ButtonGroupItemKind::Header => HEADER_HEIGHT,
         }
     }
 }
 
-/// Render a scrollable sidebar with buttons and optional headers
-pub fn render_scrollable_sidebar(
+/// Render a vertical button group with buttons and optional headers
+pub fn render_vertical_button_group(
     frame: &mut Frame,
     area: Rect,
-    items: &[SidebarItem],
+    items: &[ButtonGroupItem],
     scroll_offset: usize,
-    config: &ScrollableSidebarConfig,
+    config: &VerticalButtonGroupConfig,
 ) {
     let total_items = items.len();
     let available_height = area.height;
@@ -197,7 +197,7 @@ pub fn render_scrollable_sidebar(
     for i in 0..visible_count {
         let item = &items[first_visible + i];
         match item.kind {
-            SidebarItemKind::Button => {
+            ButtonGroupItemKind::Button => {
                 render_button(
                     frame,
                     chunks[chunk_idx],
@@ -208,7 +208,7 @@ pub fn render_scrollable_sidebar(
                     item.label_color,
                 );
             }
-            SidebarItemKind::Header => {
+            ButtonGroupItemKind::Header => {
                 let header = Paragraph::new(Span::styled(
                     &item.label,
                     Style::default().fg(Color::DarkGray),
@@ -228,7 +228,7 @@ pub fn render_scrollable_sidebar(
 }
 
 /// Calculate the maximum scroll offset for variable-height items
-fn calculate_max_scroll_offset(items: &[SidebarItem], usable_height: u16) -> usize {
+fn calculate_max_scroll_offset(items: &[ButtonGroupItem], usable_height: u16) -> usize {
     if items.is_empty() {
         return 0;
     }
