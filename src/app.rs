@@ -498,6 +498,8 @@ impl App {
                         self.state.selected_index = max - 1;
                     }
                 }
+                // Navigate to issues list after successful deletion
+                self.navigate(View::Issues, ViewParams::default());
             }
             Err(e) => {
                 self.push_error(format!("Failed to delete issue: {}", e));
