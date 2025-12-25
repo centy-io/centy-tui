@@ -177,6 +177,57 @@ impl App {
         None
     }
 
+    /// Calculate which sidebar item index was clicked based on mouse row position.
+    ///
+    /// This accounts for:
+    /// - Top padding when content is vertically centered
+    /// - Scroll indicators when content is scrollable
+    /// - Scroll offset to map visible position to correct item index
+    fn calculate_sidebar_item_from_click(&self, mouse_row: u16) -> Option<usize> {
+        const SIDEBAR_ITEM_COUNT: usize = 5;
+
+        // Get sidebar height from terminal size (height - 1 for status bar)
+        let sidebar_height = self
+            .terminal_size
+            .map(|(h, _)| h.saturating_sub(1))
+            .unwrap_or(24);
+
+        // Calculate content height: 5 items × 3 rows each = 15
+        let content_height = (SIDEBAR_ITEM_COUNT as u16) * BUTTON_HEIGHT;
+
+        // Calculate top padding (centering logic from vertical_button_group.rs:124-128)
+        let (top_padding, first_visible) = if content_height <= sidebar_height {
+            // Content fits - calculate centering padding
+            let padding = (sidebar_height - content_height) / 2;
+            (padding, 0)
+        } else {
+            // Content doesn't fit - account for scroll indicators
+            // Check if we have an up indicator (only when scrolled down)
+            let up_indicator = if self.state.sidebar_scroll_offset > 0 {
+                1u16
+            } else {
+                0
+            };
+
+            (up_indicator, self.state.sidebar_scroll_offset)
+        };
+
+        // Calculate click position relative to the first button
+        if mouse_row < top_padding {
+            return None; // Clicked in padding or indicator area
+        }
+
+        let row_in_buttons = mouse_row - top_padding;
+        let clicked_visible_index = (row_in_buttons / BUTTON_HEIGHT) as usize;
+        let item_index = first_visible + clicked_visible_index;
+
+        if item_index < SIDEBAR_ITEM_COUNT {
+            Some(item_index)
+        } else {
+            None
+        }
+    }
+
     /// Handle a key event
     pub async fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         // Handle error dialog dismissal first (modal)
@@ -1865,7 +1916,9 @@ impl App {
                 return Ok(true);
             }
             MouseEventKind::Down(MouseButton::Left) => {
-                let item_index = (mouse.row / BUTTON_HEIGHT) as usize;
+                let Some(item_index) = self.calculate_sidebar_item_from_click(mouse.row) else {
+                    return Ok(false);
+                };
                 let has_project = self.state.selected_project_path.is_some();
                 match item_index {
                     0 => {
@@ -2445,6 +2498,43 @@ mod tests {
             None
         }
 
+        fn calculate_sidebar_item_from_click(&self, mouse_row: u16) -> Option<usize> {
+            const SIDEBAR_ITEM_COUNT: usize = 5;
+
+            let sidebar_height = self
+                .terminal_size
+                .map(|(h, _)| h.saturating_sub(1))
+                .unwrap_or(24);
+
+            let content_height = (SIDEBAR_ITEM_COUNT as u16) * BUTTON_HEIGHT;
+
+            let (top_padding, first_visible) = if content_height <= sidebar_height {
+                let padding = (sidebar_height - content_height) / 2;
+                (padding, 0)
+            } else {
+                let up_indicator = if self.state.sidebar_scroll_offset > 0 {
+                    1u16
+                } else {
+                    0
+                };
+                (up_indicator, self.state.sidebar_scroll_offset)
+            };
+
+            if mouse_row < top_padding {
+                return None;
+            }
+
+            let row_in_buttons = mouse_row - top_padding;
+            let clicked_visible_index = (row_in_buttons / BUTTON_HEIGHT) as usize;
+            let item_index = first_visible + clicked_visible_index;
+
+            if item_index < SIDEBAR_ITEM_COUNT {
+                Some(item_index)
+            } else {
+                None
+            }
+        }
+
         fn update_splash(&mut self, terminal_height: u16) -> bool {
             if let Some(ref mut splash) = self.splash_state {
                 splash.update(terminal_height);
@@ -2763,6 +2853,110 @@ mod tests {
         fn test_no_actions_returns_none() {
             let app = create_app_with_actions(vec![]);
             assert!(app.calculate_action_index_from_click(5).is_none());
+        }
+    }
+
+    mod sidebar_click_calculation_tests {
+        use super::*;
+
+        fn create_app_with_terminal_size(height: u16, width: u16) -> TestApp {
+            let mut app = TestApp::new();
+            app.terminal_size = Some((height, width));
+            app
+        }
+
+        #[test]
+        fn test_click_with_centered_content() {
+            // Terminal height 50, sidebar height 49 (50 - 1 for status bar)
+            // Content height: 5 items × 3 rows = 15
+            // Top padding: (49 - 15) / 2 = 17
+            let app = create_app_with_terminal_size(50, 80);
+
+            // Click on padding area should return None
+            assert!(app.calculate_sidebar_item_from_click(5).is_none());
+            assert!(app.calculate_sidebar_item_from_click(16).is_none());
+
+            // Click on first item (rows 17-19)
+            assert_eq!(app.calculate_sidebar_item_from_click(17), Some(0));
+            assert_eq!(app.calculate_sidebar_item_from_click(18), Some(0));
+            assert_eq!(app.calculate_sidebar_item_from_click(19), Some(0));
+
+            // Click on second item (rows 20-22)
+            assert_eq!(app.calculate_sidebar_item_from_click(20), Some(1));
+            assert_eq!(app.calculate_sidebar_item_from_click(22), Some(1));
+
+            // Click on third item (rows 23-25)
+            assert_eq!(app.calculate_sidebar_item_from_click(23), Some(2));
+
+            // Click on fourth item (rows 26-28)
+            assert_eq!(app.calculate_sidebar_item_from_click(26), Some(3));
+
+            // Click on fifth item (rows 29-31)
+            assert_eq!(app.calculate_sidebar_item_from_click(29), Some(4));
+            assert_eq!(app.calculate_sidebar_item_from_click(31), Some(4));
+
+            // Click past the last item should return None
+            assert!(app.calculate_sidebar_item_from_click(32).is_none());
+        }
+
+        #[test]
+        fn test_click_on_small_terminal_no_scroll() {
+            // Terminal height 17, sidebar height 16 (17 - 1 for status bar)
+            // Content height: 5 items × 3 rows = 15
+            // This fits! Top padding: (16 - 15) / 2 = 0
+            let app = create_app_with_terminal_size(17, 80);
+
+            // First item at rows 0-2
+            assert_eq!(app.calculate_sidebar_item_from_click(0), Some(0));
+            assert_eq!(app.calculate_sidebar_item_from_click(2), Some(0));
+
+            // Second item at rows 3-5
+            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(1));
+        }
+
+        #[test]
+        fn test_click_on_small_terminal_with_scroll() {
+            // Terminal height 10, sidebar height 9 (10 - 1 for status bar)
+            // Content height: 5 items × 3 rows = 15 (doesn't fit)
+            // No scroll offset, so first item is visible
+            let mut app = create_app_with_terminal_size(10, 80);
+            app.state.sidebar_scroll_offset = 0;
+
+            // First item at rows 0-2 (no up indicator when not scrolled)
+            assert_eq!(app.calculate_sidebar_item_from_click(0), Some(0));
+            assert_eq!(app.calculate_sidebar_item_from_click(2), Some(0));
+
+            // Second item at rows 3-5
+            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(1));
+        }
+
+        #[test]
+        fn test_click_on_scrolled_sidebar() {
+            // Terminal height 10, sidebar height 9 (10 - 1 for status bar)
+            // Content height: 5 items × 3 rows = 15 (doesn't fit)
+            // With scroll offset = 1, first visible is item 1
+            let mut app = create_app_with_terminal_size(10, 80);
+            app.state.sidebar_scroll_offset = 1;
+
+            // Row 0 is the up indicator "^" - clicking should return None
+            assert!(app.calculate_sidebar_item_from_click(0).is_none());
+
+            // First visible item (item 1) at rows 1-3
+            assert_eq!(app.calculate_sidebar_item_from_click(1), Some(1));
+            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(1));
+
+            // Second visible item (item 2) at rows 4-6
+            assert_eq!(app.calculate_sidebar_item_from_click(4), Some(2));
+        }
+
+        #[test]
+        fn test_click_past_last_item_returns_none() {
+            let app = create_app_with_terminal_size(50, 80);
+
+            // With 50 row height, padding is 17, items end at row 32
+            // Any click past the last item should return None
+            assert!(app.calculate_sidebar_item_from_click(50).is_none());
+            assert!(app.calculate_sidebar_item_from_click(100).is_none());
         }
     }
 
