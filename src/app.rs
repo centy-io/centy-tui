@@ -1059,35 +1059,93 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
+            // Save (Ctrl+S or Cmd+W / Ctrl+W)
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.create_issue_with_options(false, false).await;
+            }
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
-                if let Some(path) = &self.state.selected_project_path {
-                    let result = self
-                        .daemon
-                        .create_issue(
-                            path,
-                            &self.state.form_title,
-                            &self.state.form_description,
-                            self.state.form_priority,
-                        )
-                        .await;
-                    if let Ok(new_id) = result {
-                        if let Ok(issues) = self.daemon.list_issues(path).await {
-                            self.state.issues = issues;
-                        }
-                        self.state.selected_issue_id = Some(new_id.clone());
-                        self.navigate_to_created_item(
-                            View::IssueDetail,
-                            ViewParams {
-                                issue_id: Some(new_id),
-                                ..Default::default()
-                            },
-                        );
-                    } else {
-                        self.status_message = Some("Failed to create issue".to_string());
-                    }
-                } else {
-                    self.status_message = Some("No project selected".to_string());
+                self.create_issue_with_options(false, false).await;
+            }
+            // Save as Draft (Cmd+D / Ctrl+D)
+            KeyCode::Char('d') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
+                self.create_issue_with_options(true, false).await;
+            }
+            // Create & New (Cmd+N / Ctrl+N)
+            KeyCode::Char('n') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
+                self.create_issue_with_options(false, true).await;
+            }
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
+            KeyCode::Char(c) => self
+                .state
+                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
+            KeyCode::Backspace => self.state.form_backspace(),
+            KeyCode::Enter => {
+                // Enter in description field adds newline
+                if self.state.active_form_field == 1 {
+                    self.state.form_description.push('\n');
                 }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Helper function to create an issue with different options
+    async fn create_issue_with_options(&mut self, draft: bool, create_new: bool) {
+        if let Some(path) = self.state.selected_project_path.clone() {
+            let result = self
+                .daemon
+                .create_issue(
+                    &path,
+                    &self.state.form_title,
+                    &self.state.form_description,
+                    self.state.form_priority,
+                    draft,
+                )
+                .await;
+            if let Ok(new_id) = result {
+                if let Ok(issues) = self.daemon.list_issues(&path).await {
+                    self.state.issues = issues;
+                }
+
+                if create_new {
+                    // Clear form for next issue
+                    self.state.clear_form();
+                    self.status_message = Some("Issue created! Ready for next issue.".to_string());
+                } else {
+                    self.state.selected_issue_id = Some(new_id.clone());
+                    let msg = if draft { "Draft saved!" } else { "Issue created!" };
+                    self.status_message = Some(msg.to_string());
+                    self.navigate_to_created_item(
+                        View::IssueDetail,
+                        ViewParams {
+                            issue_id: Some(new_id),
+                            ..Default::default()
+                        },
+                    );
+                }
+            } else {
+                self.status_message = Some("Failed to create issue".to_string());
+            }
+        } else {
+            self.status_message = Some("No project selected".to_string());
+        }
+    }
+
+    /// Handle keys in Issue Edit view
+    async fn handle_issue_edit_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Tab => self.state.next_form_field(),
+            KeyCode::BackTab => self.state.prev_form_field(),
+            // Save (Ctrl+S or Cmd+W / Ctrl+W)
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.save_issue_edit().await;
+            }
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
+                self.save_issue_edit().await;
             }
             KeyCode::Esc => {
                 self.state.clear_form();
@@ -1107,62 +1165,41 @@ impl App {
         Ok(())
     }
 
-    /// Handle keys in Issue Edit view
-    async fn handle_issue_edit_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Tab => self.state.next_form_field(),
-            KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
-                match (
-                    &self.state.selected_project_path,
-                    &self.state.selected_issue_id,
-                ) {
-                    (Some(path), Some(issue_id)) => {
-                        let result = self
-                            .daemon
-                            .update_issue(
-                                path,
-                                issue_id,
-                                &self.state.form_title,
-                                &self.state.form_description,
-                                self.state.form_priority,
-                                &self.state.form_status,
-                            )
-                            .await;
-                        if result.is_ok() {
-                            if let Ok(issues) = self.daemon.list_issues(path).await {
-                                self.state.issues = issues;
-                            }
-                            self.state.clear_form();
-                            self.go_back();
-                        } else {
-                            self.status_message = Some("Failed to update issue".to_string());
-                        }
+    /// Helper to save issue edit
+    async fn save_issue_edit(&mut self) {
+        match (
+            &self.state.selected_project_path,
+            &self.state.selected_issue_id,
+        ) {
+            (Some(path), Some(issue_id)) => {
+                let result = self
+                    .daemon
+                    .update_issue(
+                        path,
+                        issue_id,
+                        &self.state.form_title,
+                        &self.state.form_description,
+                        self.state.form_priority,
+                        &self.state.form_status,
+                    )
+                    .await;
+                if result.is_ok() {
+                    if let Ok(issues) = self.daemon.list_issues(path).await {
+                        self.state.issues = issues;
                     }
-                    (None, _) => {
-                        self.status_message = Some("No project selected".to_string());
-                    }
-                    (_, None) => {
-                        self.status_message = Some("No issue selected".to_string());
-                    }
+                    self.state.clear_form();
+                    self.go_back();
+                } else {
+                    self.status_message = Some("Failed to update issue".to_string());
                 }
             }
-            KeyCode::Esc => {
-                self.state.clear_form();
-                self.go_back();
+            (None, _) => {
+                self.status_message = Some("No project selected".to_string());
             }
-            KeyCode::Char(c) => self
-                .state
-                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
-            KeyCode::Backspace => self.state.form_backspace(),
-            KeyCode::Enter => {
-                if self.state.active_form_field == 1 {
-                    self.state.form_description.push('\n');
-                }
+            (_, None) => {
+                self.status_message = Some("No issue selected".to_string());
             }
-            _ => {}
         }
-        Ok(())
     }
 
     /// Handle keys in PRs view
@@ -1306,36 +1343,12 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
+            // Save (Ctrl+S or Cmd+W / Ctrl+W)
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.save_pr_create().await;
+            }
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
-                if let Some(path) = &self.state.selected_project_path {
-                    let result = self
-                        .daemon
-                        .create_pr(
-                            path,
-                            &self.state.form_title,
-                            &self.state.form_description,
-                            &self.state.form_source_branch,
-                            &self.state.form_target_branch,
-                        )
-                        .await;
-                    if let Ok(new_id) = result {
-                        if let Ok(prs) = self.daemon.list_prs(path).await {
-                            self.state.prs = prs;
-                        }
-                        self.state.selected_pr_id = Some(new_id.clone());
-                        self.navigate_to_created_item(
-                            View::PrDetail,
-                            ViewParams {
-                                pr_id: Some(new_id),
-                                ..Default::default()
-                            },
-                        );
-                    } else {
-                        self.status_message = Some("Failed to create PR".to_string());
-                    }
-                } else {
-                    self.status_message = Some("No project selected".to_string());
-                }
+                self.save_pr_create().await;
             }
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
@@ -1348,6 +1361,39 @@ impl App {
         Ok(())
     }
 
+    /// Helper to save PR create
+    async fn save_pr_create(&mut self) {
+        if let Some(path) = &self.state.selected_project_path {
+            let result = self
+                .daemon
+                .create_pr(
+                    path,
+                    &self.state.form_title,
+                    &self.state.form_description,
+                    &self.state.form_source_branch,
+                    &self.state.form_target_branch,
+                )
+                .await;
+            if let Ok(new_id) = result {
+                if let Ok(prs) = self.daemon.list_prs(path).await {
+                    self.state.prs = prs;
+                }
+                self.state.selected_pr_id = Some(new_id.clone());
+                self.navigate_to_created_item(
+                    View::PrDetail,
+                    ViewParams {
+                        pr_id: Some(new_id),
+                        ..Default::default()
+                    },
+                );
+            } else {
+                self.status_message = Some("Failed to create PR".to_string());
+            }
+        } else {
+            self.status_message = Some("No project selected".to_string());
+        }
+    }
+
     /// Handle keys in PR Edit view
     async fn handle_pr_edit_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
@@ -1355,41 +1401,12 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
+            // Save (Ctrl+S or Cmd+W / Ctrl+W)
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.save_pr_edit().await;
+            }
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
-                match (
-                    &self.state.selected_project_path,
-                    &self.state.selected_pr_id,
-                ) {
-                    (Some(path), Some(pr_id)) => {
-                        let result = self
-                            .daemon
-                            .update_pr(
-                                path,
-                                pr_id,
-                                &self.state.form_title,
-                                &self.state.form_description,
-                                &self.state.form_source_branch,
-                                &self.state.form_target_branch,
-                                &self.state.form_status,
-                            )
-                            .await;
-                        if result.is_ok() {
-                            if let Ok(prs) = self.daemon.list_prs(path).await {
-                                self.state.prs = prs;
-                            }
-                            self.state.clear_form();
-                            self.go_back();
-                        } else {
-                            self.status_message = Some("Failed to update PR".to_string());
-                        }
-                    }
-                    (None, _) => {
-                        self.status_message = Some("No project selected".to_string());
-                    }
-                    (_, None) => {
-                        self.status_message = Some("No PR selected".to_string());
-                    }
-                }
+                self.save_pr_edit().await;
             }
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
@@ -1400,6 +1417,44 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    /// Helper to save PR edit
+    async fn save_pr_edit(&mut self) {
+        match (
+            &self.state.selected_project_path,
+            &self.state.selected_pr_id,
+        ) {
+            (Some(path), Some(pr_id)) => {
+                let result = self
+                    .daemon
+                    .update_pr(
+                        path,
+                        pr_id,
+                        &self.state.form_title,
+                        &self.state.form_description,
+                        &self.state.form_source_branch,
+                        &self.state.form_target_branch,
+                        &self.state.form_status,
+                    )
+                    .await;
+                if result.is_ok() {
+                    if let Ok(prs) = self.daemon.list_prs(path).await {
+                        self.state.prs = prs;
+                    }
+                    self.state.clear_form();
+                    self.go_back();
+                } else {
+                    self.status_message = Some("Failed to update PR".to_string());
+                }
+            }
+            (None, _) => {
+                self.status_message = Some("No project selected".to_string());
+            }
+            (_, None) => {
+                self.status_message = Some("No PR selected".to_string());
+            }
+        }
     }
 
     /// Handle keys in Docs view
@@ -1529,40 +1584,12 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
+            // Save (Ctrl+S or Cmd+W / Ctrl+W)
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.save_doc_create().await;
+            }
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
-                if let Some(path) = &self.state.selected_project_path {
-                    let slug = if self.state.form_slug.is_empty() {
-                        None
-                    } else {
-                        Some(self.state.form_slug.as_str())
-                    };
-                    let result = self
-                        .daemon
-                        .create_doc(
-                            path,
-                            &self.state.form_title,
-                            &self.state.form_description,
-                            slug,
-                        )
-                        .await;
-                    if let Ok(new_slug) = result {
-                        if let Ok(docs) = self.daemon.list_docs(path).await {
-                            self.state.docs = docs;
-                        }
-                        self.state.selected_doc_slug = Some(new_slug.clone());
-                        self.navigate_to_created_item(
-                            View::DocDetail,
-                            ViewParams {
-                                doc_slug: Some(new_slug),
-                                ..Default::default()
-                            },
-                        );
-                    } else {
-                        self.status_message = Some("Failed to create doc".to_string());
-                    }
-                } else {
-                    self.status_message = Some("No project selected".to_string());
-                }
+                self.save_doc_create().await;
             }
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
@@ -1578,6 +1605,43 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    /// Helper to save doc create
+    async fn save_doc_create(&mut self) {
+        if let Some(path) = &self.state.selected_project_path {
+            let slug = if self.state.form_slug.is_empty() {
+                None
+            } else {
+                Some(self.state.form_slug.as_str())
+            };
+            let result = self
+                .daemon
+                .create_doc(
+                    path,
+                    &self.state.form_title,
+                    &self.state.form_description,
+                    slug,
+                )
+                .await;
+            if let Ok(new_slug) = result {
+                if let Ok(docs) = self.daemon.list_docs(path).await {
+                    self.state.docs = docs;
+                }
+                self.state.selected_doc_slug = Some(new_slug.clone());
+                self.navigate_to_created_item(
+                    View::DocDetail,
+                    ViewParams {
+                        doc_slug: Some(new_slug),
+                        ..Default::default()
+                    },
+                );
+            } else {
+                self.status_message = Some("Failed to create doc".to_string());
+            }
+        } else {
+            self.status_message = Some("No project selected".to_string());
+        }
     }
 
     /// Handle keys in Config view
