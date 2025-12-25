@@ -54,3 +54,38 @@ pub fn render_sidebar_button(
     let content = format!("{key} {label}");
     render_button(frame, area, &content, is_selected, is_enabled);
 }
+
+/// Render an action panel button with optional custom label color
+pub fn render_action_button(
+    frame: &mut Frame,
+    area: Rect,
+    label: &str,
+    is_selected: bool,
+    is_enabled: bool,
+    label_color: Option<Color>,
+) {
+    let border_style = if is_selected {
+        Style::default().fg(Color::Cyan)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let text_style = if is_selected {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else if !is_enabled {
+        Style::default().fg(Color::DarkGray)
+    } else if let Some(color) = label_color {
+        Style::default().fg(color)
+    } else {
+        Style::default()
+    };
+
+    let paragraph = Paragraph::new(format!(" {label} ")).style(text_style);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style);
+
+    frame.render_widget(paragraph.block(block), area);
+}

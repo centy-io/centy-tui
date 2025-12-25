@@ -2,4 +2,4 @@
 
 mod button;
 
-pub use button::{render_button, render_sidebar_button, BUTTON_HEIGHT};
+pub use button::{render_action_button, render_sidebar_button, BUTTON_HEIGHT};

@@ -117,6 +117,42 @@ impl App {
         columns.max(1)
     }
 
+    /// Calculate which action was clicked based on mouse row position
+    ///
+    /// The action panel layout is:
+    /// - Row 0: Outer border
+    /// - For each category:
+    ///   - 1 row: Category label
+    ///   - N rows: Action buttons (BUTTON_HEIGHT each)
+    /// - Remaining: Help text
+    fn calculate_action_index_from_click(&self, mouse_row: u16) -> Option<usize> {
+        if mouse_row < 1 {
+            return None; // Click on border
+        }
+
+        let row_in_panel = mouse_row - 1; // Account for outer border
+        let grouped = self.state.current_actions.grouped_actions();
+
+        let mut current_row: u16 = 0;
+        let mut action_idx = 0;
+
+        for (_category, actions) in &grouped {
+            // Category label takes 1 row
+            current_row += 1;
+
+            // Each action button takes BUTTON_HEIGHT rows
+            for _ in actions {
+                if row_in_panel >= current_row && row_in_panel < current_row + BUTTON_HEIGHT {
+                    return Some(action_idx);
+                }
+                current_row += BUTTON_HEIGHT;
+                action_idx += 1;
+            }
+        }
+
+        None
+    }
+
     /// Handle a key event
     pub async fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         // Clear any status messages on key press
@@ -1442,10 +1478,38 @@ impl App {
     async fn handle_list_mouse(&mut self, mouse: MouseEvent, list_len: usize) -> Result<()> {
         let main_area_start_x = self.sidebar_width();
         const LIST_ITEMS_START_Y: u16 = 3;
+        const ACTION_PANEL_WIDTH: u16 = 22;
+
         match mouse.kind {
             MouseEventKind::ScrollUp => self.state.move_selection_up(),
             MouseEventKind::ScrollDown => self.state.move_selection_down(list_len),
             MouseEventKind::Down(MouseButton::Left) => {
+                let terminal_width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
+                let action_panel_start_x = terminal_width.saturating_sub(ACTION_PANEL_WIDTH);
+
+                // Check if click is in the action panel area
+                if mouse.column >= action_panel_start_x {
+                    // Handle action panel click
+                    if let Some(action_idx) = self.calculate_action_index_from_click(mouse.row) {
+                        let total_actions = self.state.current_actions.actions.len();
+                        if action_idx < total_actions {
+                            let is_enabled = self
+                                .state
+                                .current_actions
+                                .actions
+                                .get(action_idx)
+                                .map(|a| a.enabled)
+                                .unwrap_or(false);
+
+                            if is_enabled {
+                                self.state.action_panel_selected_index = action_idx;
+                                self.execute_selected_dynamic_action().await?;
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+
                 if mouse.column >= main_area_start_x && mouse.row >= LIST_ITEMS_START_Y {
                     let clicked_index = (mouse.row - LIST_ITEMS_START_Y) as usize;
                     if clicked_index < list_len {
@@ -1632,9 +1696,42 @@ impl App {
 
     /// Handle mouse events for scrollable content views (Detail views, Config)
     async fn handle_scroll_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        const ACTION_PANEL_WIDTH: u16 = 22;
+
         match mouse.kind {
             MouseEventKind::ScrollUp => self.state.scroll_up(),
             MouseEventKind::ScrollDown => self.state.scroll_down(),
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Handle action panel clicks for detail views
+                if matches!(
+                    self.state.current_view,
+                    View::IssueDetail | View::PrDetail | View::DocDetail
+                ) {
+                    let terminal_width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
+                    let action_panel_start_x = terminal_width.saturating_sub(ACTION_PANEL_WIDTH);
+
+                    if mouse.column >= action_panel_start_x {
+                        if let Some(action_idx) = self.calculate_action_index_from_click(mouse.row)
+                        {
+                            let total_actions = self.state.current_actions.actions.len();
+                            if action_idx < total_actions {
+                                let is_enabled = self
+                                    .state
+                                    .current_actions
+                                    .actions
+                                    .get(action_idx)
+                                    .map(|a| a.enabled)
+                                    .unwrap_or(false);
+
+                                if is_enabled {
+                                    self.state.action_panel_selected_index = action_idx;
+                                    self.execute_selected_dynamic_action().await?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())

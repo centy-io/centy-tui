@@ -135,24 +135,12 @@ fn apply_selection_highlight(
     }
 }
 
-/// Get style for an action category
-fn get_category_style(category: ActionCategory, destructive: bool) -> Style {
-    if destructive {
-        return Style::default().fg(Color::Red);
-    }
-    match category {
-        ActionCategory::Crud => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-        ActionCategory::Mode => Style::default().fg(Color::Yellow),
-        ActionCategory::Status => Style::default().fg(Color::Cyan),
-        ActionCategory::External => Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-        ActionCategory::Unspecified => Style::default().fg(Color::White),
-    }
-}
-
-/// Render a dynamic action panel
+/// Render a dynamic action panel with boxed buttons
 ///
 /// This is a shared component used by Issues, PRs, and Docs views.
 pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused: bool) {
+    use ratatui::layout::{Constraint, Direction, Layout};
+
     let border_color = if is_focused {
         Color::Cyan
     } else {
@@ -160,94 +148,134 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
     };
     let selected_idx = app.state.action_panel_selected_index;
 
-    let mut content: Vec<Line> = vec![Line::from("")];
+    // Create outer block
+    let block = Block::default()
+        .title(" Actions ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
 
-    // Show loading state
+    let inner_area = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Show loading/error/empty states as simple text
     if app.state.actions_loading {
-        content.push(Line::from(Span::styled(
-            "  Loading...",
+        let content = Paragraph::new(Span::styled(
+            " Loading...",
             Style::default().fg(Color::DarkGray),
-        )));
-    } else if let Some(error) = &app.state.actions_error {
-        content.push(Line::from(Span::styled(
-            format!("  Error: {}", error),
+        ));
+        frame.render_widget(content, inner_area);
+        return;
+    }
+
+    if let Some(error) = &app.state.actions_error {
+        let content = Paragraph::new(Span::styled(
+            format!(" Error: {}", error),
             Style::default().fg(Color::Red),
-        )));
-    } else if app.state.current_actions.actions.is_empty() {
-        content.push(Line::from(Span::styled(
-            "  No actions",
+        ));
+        frame.render_widget(content, inner_area);
+        return;
+    }
+
+    if app.state.current_actions.actions.is_empty() {
+        let content = Paragraph::new(Span::styled(
+            " No actions",
             Style::default().fg(Color::DarkGray),
-        )));
-    } else {
-        // Render actions grouped by category
-        let mut action_idx = 0;
-        for (category, actions) in app.state.current_actions.grouped_actions() {
-            // Category header
-            content.push(Line::from(Span::styled(
-                format!(" {}:", category.label().to_uppercase()),
-                Style::default().fg(Color::DarkGray),
-            )));
+        ));
+        frame.render_widget(content, inner_area);
+        return;
+    }
 
-            for action in actions {
-                let is_selected = is_focused && action_idx == selected_idx;
+    // Build dynamic constraints for buttons
+    // Each category: 1 row label + N buttons (BUTTON_HEIGHT each)
+    let mut constraints: Vec<Constraint> = Vec::new();
+    let grouped = app.state.current_actions.grouped_actions();
 
-                let prefix = if is_selected {
-                    Span::styled(" > ", Style::default().fg(Color::Cyan))
-                } else {
-                    Span::raw("   ")
-                };
+    for (_category, actions) in &grouped {
+        constraints.push(Constraint::Length(1)); // Category label
+        for _ in actions {
+            constraints.push(Constraint::Length(BUTTON_HEIGHT));
+        }
+    }
+    constraints.push(Constraint::Min(0)); // Help text area
 
-                // Action style based on enabled state and category
-                let action_style = if !action.enabled {
-                    Style::default().fg(Color::DarkGray) // Grayed out
-                } else {
-                    get_category_style(action.category, action.destructive)
-                };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(inner_area);
 
-                // Show shortcut hint if available
-                let shortcut_hint = if !action.keyboard_shortcut.is_empty() {
-                    format!(" [{}]", action.keyboard_shortcut)
-                } else {
-                    String::new()
-                };
+    let mut chunk_idx = 0;
+    let mut action_idx = 0;
 
-                content.push(Line::from(vec![
-                    prefix,
-                    Span::styled(&action.label, action_style),
-                    Span::styled(shortcut_hint, Style::default().fg(Color::DarkGray)),
-                ]));
+    for (category, actions) in &grouped {
+        // Render category label
+        let label = Paragraph::new(Span::styled(
+            format!("{}:", category.label().to_uppercase()),
+            Style::default().fg(Color::DarkGray),
+        ));
+        frame.render_widget(label, chunks[chunk_idx]);
+        chunk_idx += 1;
 
-                action_idx += 1;
-            }
+        // Render action buttons
+        for action in actions {
+            let is_selected = is_focused && action_idx == selected_idx;
 
-            content.push(Line::from("")); // Space between categories
+            // Get color based on category and state
+            let label_color = if action.enabled {
+                Some(get_category_color(action.category, action.destructive))
+            } else {
+                None // Will use disabled style
+            };
+
+            // Build label with optional shortcut hint
+            let label = if !action.keyboard_shortcut.is_empty() {
+                format!("{} [{}]", action.label, action.keyboard_shortcut)
+            } else {
+                action.label.clone()
+            };
+
+            components::render_action_button(
+                frame,
+                chunks[chunk_idx],
+                &label,
+                is_selected,
+                action.enabled,
+                label_color,
+            );
+
+            chunk_idx += 1;
+            action_idx += 1;
         }
     }
 
-    // Help text
-    content.push(Line::from(Span::styled(
-        " ".to_string() + &"-".repeat(16),
-        Style::default().fg(Color::DarkGray),
-    )));
-    content.push(Line::from(Span::styled(
-        " j/k navigate",
-        Style::default().fg(Color::DarkGray),
-    )));
-    content.push(Line::from(Span::styled(
-        " Enter to select",
-        Style::default().fg(Color::DarkGray),
-    )));
-    content.push(Line::from(Span::styled(
-        " Tab switch panel",
-        Style::default().fg(Color::DarkGray),
-    )));
+    // Render help text in remaining area
+    let help_text = vec![
+        Line::from(Span::styled(
+            " j/k navigate",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            " Enter select",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            " Tab switch",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    let help = Paragraph::new(help_text);
+    frame.render_widget(help, chunks[chunk_idx]);
+}
 
-    let panel = Paragraph::new(content).block(
-        Block::default()
-            .title(" Actions ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color)),
-    );
-
-    frame.render_widget(panel, area);
+/// Get color for an action category
+fn get_category_color(category: ActionCategory, destructive: bool) -> Color {
+    if destructive {
+        return Color::Red;
+    }
+    match category {
+        ActionCategory::Crud => Color::Green,
+        ActionCategory::Mode => Color::Yellow,
+        ActionCategory::Status => Color::Cyan,
+        ActionCategory::External => Color::White,
+        ActionCategory::Unspecified => Color::White,
+    }
 }
