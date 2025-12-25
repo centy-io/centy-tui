@@ -309,6 +309,9 @@ impl App {
                     if let Ok(issues) = self.daemon.list_issues(&path).await {
                         self.state.issues = issues;
                     }
+                    if let Ok(docs) = self.daemon.list_docs(&path).await {
+                        self.state.docs = docs;
+                    }
                     if let Ok(config) = self.daemon.get_config(&path).await {
                         self.state.config = Some(config);
                     }
@@ -2157,6 +2160,9 @@ impl App {
                                 self.state.selected_project_path = Some(path.clone());
                                 if let Ok(issues) = self.daemon.list_issues(&path).await {
                                     self.state.issues = issues;
+                                }
+                                if let Ok(docs) = self.daemon.list_docs(&path).await {
+                                    self.state.docs = docs;
                                 }
                                 if let Ok(config) = self.daemon.get_config(&path).await {
                                     self.state.config = Some(config);
