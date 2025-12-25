@@ -102,7 +102,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         let header_y = y_offset.saturating_sub(scroll_offset);
 
         // Draw section header if visible
-        if y_offset + SECTION_HEADER_HEIGHT > scroll_offset && y_offset < scroll_offset + visible_height {
+        if y_offset + SECTION_HEADER_HEIGHT > scroll_offset
+            && y_offset < scroll_offset + visible_height
+        {
             let visible_header_y = if y_offset >= scroll_offset {
                 inner.y + header_y
             } else {
@@ -159,7 +161,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     // Draw scroll indicator if content exceeds visible area
     let total_content_height = y_offset;
     if total_content_height > visible_height {
-        draw_scroll_indicator(frame, inner, scroll_offset, total_content_height, visible_height);
+        draw_scroll_indicator(
+            frame,
+            inner,
+            scroll_offset,
+            total_content_height,
+            visible_height,
+        );
     }
 
     // Draw confirmation dialog if active
@@ -183,8 +191,8 @@ fn draw_scroll_indicator(
     }
 
     // Calculate scrollbar position and size
-    let scrollbar_height = ((visible_height as u32 * visible_height as u32) / total_height as u32)
-        .max(1) as u16;
+    let scrollbar_height =
+        ((visible_height as u32 * visible_height as u32) / total_height as u32).max(1) as u16;
     let scrollbar_height = scrollbar_height.min(visible_height);
 
     let scroll_range = total_height.saturating_sub(visible_height);

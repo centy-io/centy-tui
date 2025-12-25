@@ -108,7 +108,14 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
             .map(|bp| matches!(&bp.button, PressedButton::Sidebar(i) if *i == idx))
             .unwrap_or(false);
 
-        render_sidebar_button(frame, chunks[idx + 1], label, is_selected, is_enabled, is_pressed);
+        render_sidebar_button(
+            frame,
+            chunks[idx + 1],
+            label,
+            is_selected,
+            is_enabled,
+            is_pressed,
+        );
     }
 }
 

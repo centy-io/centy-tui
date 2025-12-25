@@ -71,7 +71,15 @@ pub fn render_sidebar_button(
     is_enabled: bool,
     is_pressed: bool,
 ) {
-    render_button(frame, area, label, is_selected, is_enabled, is_pressed, None);
+    render_button(
+        frame,
+        area,
+        label,
+        is_selected,
+        is_enabled,
+        is_pressed,
+        None,
+    );
 }
 
 /// Render an action panel button with optional custom label color

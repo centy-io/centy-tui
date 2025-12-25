@@ -35,11 +35,7 @@ impl View {
     pub fn is_form_view(&self) -> bool {
         matches!(
             self,
-            View::IssueCreate
-                | View::IssueEdit
-                | View::PrCreate
-                | View::PrEdit
-                | View::DocCreate
+            View::IssueCreate | View::IssueEdit | View::PrCreate | View::PrEdit | View::DocCreate
         )
     }
 }
@@ -625,6 +621,8 @@ pub struct AppState {
     pub form_slug: String,
     pub form_source_branch: String,
     pub form_target_branch: String,
+    /// Selected button index for create forms (0=Cancel, 1=Draft, 2=Create&New, 3=Create)
+    pub form_selected_button: usize,
 
     // Text selection state
     pub selection: SelectionState,
@@ -949,7 +947,10 @@ impl AppState {
 
         for project in self.projects.iter().filter(|p| !p.is_favorite) {
             if let Some(org_slug) = &project.organization_slug {
-                org_groups.entry(org_slug.clone()).or_default().push(project);
+                org_groups
+                    .entry(org_slug.clone())
+                    .or_default()
+                    .push(project);
             } else {
                 ungrouped.push(project);
             }
@@ -1068,7 +1069,7 @@ impl AppState {
     /// Get number of form fields for current view
     pub fn form_field_count(&self) -> usize {
         match self.current_view {
-            View::IssueCreate => 3, // title, description, priority
+            View::IssueCreate => 4, // title, description, priority, buttons
             View::IssueEdit => 4,   // title, description, priority, status
             View::PrCreate => 5,    // title, description, source, target, priority
             View::PrEdit => 6,      // title, description, source, target, priority, status
@@ -1175,6 +1176,7 @@ impl AppState {
         self.form_slug.clear();
         self.form_source_branch.clear();
         self.form_target_branch.clear();
+        self.form_selected_button = 3; // Default to "Create" button
     }
 
     /// Load issue data into form for editing

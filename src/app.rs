@@ -755,7 +755,8 @@ impl App {
                 } else if error_lower.contains("not found") && error_lower.contains("vscode") {
                     "VS Code not found.\nInstall it and add 'code' to PATH.".to_string()
                 } else if error_lower.contains("connection") {
-                    "Cannot connect to centy daemon.\nIs it running? Try: centy daemon start".to_string()
+                    "Cannot connect to centy daemon.\nIs it running? Try: centy daemon start"
+                        .to_string()
                 } else {
                     // Clean up nested error prefixes for unknown errors
                     error_str
@@ -1117,7 +1118,11 @@ impl App {
                     self.status_message = Some("Issue created! Ready for next issue.".to_string());
                 } else {
                     self.state.selected_issue_id = Some(new_id.clone());
-                    let msg = if draft { "Draft saved!" } else { "Issue created!" };
+                    let msg = if draft {
+                        "Draft saved!"
+                    } else {
+                        "Issue created!"
+                    };
                     self.status_message = Some(msg.to_string());
                     self.navigate_to_created_item(
                         View::IssueDetail,

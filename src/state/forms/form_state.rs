@@ -101,6 +101,8 @@ pub struct IssueCreateForm {
     pub description: FormField,
     pub priority: FormField,
     pub active_field_index: usize,
+    /// Which button is selected when on the buttons row (0=Cancel, 1=Draft, 2=Create&New, 3=Create)
+    pub selected_button: usize,
 }
 
 impl IssueCreateForm {
@@ -110,6 +112,26 @@ impl IssueCreateForm {
             description: FormField::text("description", "Description", true),
             priority: FormField::priority("priority", "Priority (1-3)"),
             active_field_index: 0,
+            selected_button: 3, // Default to "Create" button
+        }
+    }
+
+    /// Returns true if the buttons row is currently active
+    pub fn is_buttons_row_active(&self) -> bool {
+        self.active_field_index == 3
+    }
+
+    /// Move to the next button (wraps around)
+    pub fn next_button(&mut self) {
+        self.selected_button = (self.selected_button + 1) % 4;
+    }
+
+    /// Move to the previous button (wraps around)
+    pub fn prev_button(&mut self) {
+        if self.selected_button == 0 {
+            self.selected_button = 3;
+        } else {
+            self.selected_button -= 1;
         }
     }
 }
@@ -122,18 +144,19 @@ impl Default for IssueCreateForm {
 
 impl Form for IssueCreateForm {
     fn field_count(&self) -> usize {
-        3
+        4 // title, description, priority, buttons
     }
     fn active_field(&self) -> usize {
         self.active_field_index
     }
     fn set_active_field(&mut self, index: usize) {
-        self.active_field_index = index.min(2);
+        self.active_field_index = index.min(3);
     }
     fn get_active_field_mut(&mut self) -> &mut FormField {
         match self.active_field_index {
             0 => &mut self.title,
             1 => &mut self.description,
+            // For buttons row (index 3), return priority as dummy (won't be used for text input)
             _ => &mut self.priority,
         }
     }
@@ -142,6 +165,7 @@ impl Form for IssueCreateForm {
             0 => Some(&self.title),
             1 => Some(&self.description),
             2 => Some(&self.priority),
+            // Index 3 is buttons row, no FormField for it
             _ => None,
         }
     }
