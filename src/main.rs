@@ -80,6 +80,9 @@ async fn run_app<B: ratatui::backend::Backend>(
             app.update_splash(terminal_height);
         }
 
+        // Update button press animation state
+        app.update_button_press();
+
         // Draw the UI
         terminal.draw(|frame| ui::draw(frame, app))?;
 
@@ -87,7 +90,8 @@ async fn run_app<B: ratatui::backend::Backend>(
         // This is handled in the Resize event below
 
         // Use faster polling during animation (16ms = ~60fps), normal polling (100ms) otherwise
-        let poll_duration = if in_splash {
+        let has_button_animation = app.state.button_press.is_some();
+        let poll_duration = if in_splash || has_button_animation {
             std::time::Duration::from_millis(16)
         } else {
             std::time::Duration::from_millis(100)

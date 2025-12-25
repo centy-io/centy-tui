@@ -15,7 +15,7 @@ pub use components::BUTTON_HEIGHT;
 pub use widgets::render_scrollable_list;
 
 use crate::app::App;
-use crate::state::{ActionCategory, ScreenPos, View};
+use crate::state::{ActionCategory, PressedButton, ScreenPos, View};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -235,6 +235,14 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
                 action.label.clone()
             };
 
+            // Check if this action button is pressed for animation
+            let is_pressed = app
+                .state
+                .button_press
+                .as_ref()
+                .map(|bp| matches!(&bp.button, PressedButton::ActionPanel(i) if *i == action_idx))
+                .unwrap_or(false);
+
             components::render_action_button(
                 frame,
                 chunks[chunk_idx],
@@ -242,6 +250,7 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
                 is_selected,
                 action.enabled,
                 label_color,
+                is_pressed,
             );
 
             chunk_idx += 1;
