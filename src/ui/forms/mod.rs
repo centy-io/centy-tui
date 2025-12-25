@@ -3,12 +3,14 @@
 //! This module provides a modular DDD-based structure for form rendering.
 
 mod doc_form;
+mod edit_page;
 mod field_renderer;
 mod issue_form;
 mod pr_form;
 
 // Re-export with original function names for API compatibility
 pub use doc_form::draw_create as draw_doc_create;
+pub use doc_form::draw_edit as draw_doc_edit;
 pub use doc_form::get_field_count as get_doc_field_count;
 pub use issue_form::draw_create as draw_issue_create;
 pub use issue_form::draw_edit as draw_issue_edit;

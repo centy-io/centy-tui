@@ -67,6 +67,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         View::Docs => docs::draw_list(frame, main_area, app),
         View::DocDetail => docs::draw_detail(frame, main_area, app),
         View::DocCreate => forms::draw_doc_create(frame, main_area, app),
+        View::DocEdit => forms::draw_doc_edit(frame, main_area, app),
         View::Config => config_panel::draw(frame, main_area, app),
     }
 

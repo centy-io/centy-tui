@@ -28,6 +28,7 @@ pub enum View {
     Docs,
     DocDetail,
     DocCreate,
+    DocEdit,
     Config,
 }
 
@@ -36,7 +37,12 @@ impl View {
     pub fn is_form_view(&self) -> bool {
         matches!(
             self,
-            View::IssueCreate | View::IssueEdit | View::PrCreate | View::PrEdit | View::DocCreate
+            View::IssueCreate
+                | View::IssueEdit
+                | View::PrCreate
+                | View::PrEdit
+                | View::DocCreate
+                | View::DocEdit
         )
     }
 }
@@ -1079,6 +1085,7 @@ impl AppState {
             View::PrCreate => 5,    // title, description, source, target, priority
             View::PrEdit => 6,      // title, description, source, target, priority, status
             View::DocCreate => 3,   // title, content, slug
+            View::DocEdit => 3,     // title, content, slug
             _ => 1,
         }
     }
@@ -1112,7 +1119,7 @@ impl AppState {
                 5 => self.form_status.push(ch),
                 _ => {}
             },
-            View::DocCreate => match self.active_form_field {
+            View::DocCreate | View::DocEdit => match self.active_form_field {
                 0 => self.form_title.push(ch),
                 1 => self.form_description.push(ch),
                 2 => self.form_slug.push(ch),
@@ -1155,7 +1162,7 @@ impl AppState {
                 }
                 _ => {}
             },
-            View::DocCreate => match self.active_form_field {
+            View::DocCreate | View::DocEdit => match self.active_form_field {
                 0 => {
                     self.form_title.pop();
                 }
@@ -1186,7 +1193,6 @@ impl AppState {
     }
 
     /// Load issue data into form for editing
-    #[allow(dead_code)]
     pub fn load_issue_to_form(&mut self, issue: &Issue) {
         self.form_title = issue.title.clone();
         self.form_description = issue.description.clone();
@@ -1195,7 +1201,6 @@ impl AppState {
     }
 
     /// Load PR data into form for editing
-    #[allow(dead_code)]
     pub fn load_pr_to_form(&mut self, pr: &PullRequest) {
         self.form_title = pr.title.clone();
         self.form_description = pr.description.clone();
@@ -1203,6 +1208,13 @@ impl AppState {
         self.form_status = pr.metadata.status.clone();
         self.form_source_branch = pr.metadata.source_branch.clone();
         self.form_target_branch = pr.metadata.target_branch.clone();
+    }
+
+    /// Load doc data into form for editing
+    pub fn load_doc_to_form(&mut self, doc: &Doc) {
+        self.form_title = doc.title.clone();
+        self.form_description = doc.content.clone();
+        self.form_slug = doc.slug.clone();
     }
 
     /// Toggle the org-wide doc checkbox
@@ -1323,6 +1335,7 @@ mod tests {
             assert!(View::PrCreate.is_form_view());
             assert!(View::PrEdit.is_form_view());
             assert!(View::DocCreate.is_form_view());
+            assert!(View::DocEdit.is_form_view());
         }
 
         #[test]

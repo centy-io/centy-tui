@@ -587,6 +587,38 @@ impl DaemonClient {
         Ok((inner.slug, inner.sync_results))
     }
 
+    /// Update an existing doc
+    pub async fn update_doc(
+        &mut self,
+        project_path: &str,
+        slug: &str,
+        title: &str,
+        content: &str,
+        new_slug: Option<&str>,
+    ) -> Result<()> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::UpdateDocRequest {
+            project_path: project_path.to_string(),
+            slug: slug.to_string(),
+            title: title.to_string(),
+            content: content.to_string(),
+            new_slug: new_slug.unwrap_or("").to_string(),
+        });
+
+        let response = client
+            .update_doc(request)
+            .await
+            .map_err(|e| anyhow!("Failed to update doc: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("Failed to update doc: {}", inner.error));
+        }
+
+        Ok(())
+    }
+
     /// Open a project in a temporary VS Code workspace
     pub async fn open_in_temp_vscode(
         &mut self,
