@@ -30,6 +30,20 @@ pub enum View {
     Config,
 }
 
+impl View {
+    /// Returns true if this is a form view (create/edit) where sidebar should be hidden
+    pub fn is_form_view(&self) -> bool {
+        matches!(
+            self,
+            View::IssueCreate
+                | View::IssueEdit
+                | View::PrCreate
+                | View::PrEdit
+                | View::DocCreate
+        )
+    }
+}
+
 /// View parameters for navigation
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default)]

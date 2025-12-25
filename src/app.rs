@@ -1532,10 +1532,11 @@ impl App {
         // Track view before handling mouse to detect navigation
         let view_before = self.state.current_view.clone();
 
-        // Only check sidebar mouse if sidebar is visible (project selected)
+        // Only check sidebar mouse if sidebar is visible (project selected and not in form view)
         let has_project = self.state.selected_project_path.is_some();
         if has_project
             && self.state.current_view != View::Splash
+            && !self.state.current_view.is_form_view()
             && self.handle_sidebar_mouse(mouse).await?
         {
             // Refresh actions if view changed via sidebar

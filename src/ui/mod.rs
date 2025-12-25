@@ -37,10 +37,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         return;
     }
 
-    // Determine if we should show sidebar (only when a project is selected)
+    // Determine if we should show sidebar (only when a project is selected and not in a form view)
     let has_project = app.state.selected_project_path.is_some();
+    let show_sidebar = has_project && !app.state.current_view.is_form_view();
 
-    let main_area = if has_project {
+    let main_area = if show_sidebar {
         // Draw the main layout with sidebar
         let (sidebar_area, main_area) = layout::create_layout(area);
         layout::draw_sidebar(frame, sidebar_area, app);
