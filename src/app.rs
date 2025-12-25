@@ -183,6 +183,12 @@ impl App {
         }
     }
 
+    /// Navigate to the detail view for a newly created item
+    fn navigate_to_created_item(&mut self, view: View, params: ViewParams) {
+        self.state.clear_form();
+        self.navigate(view, params);
+    }
+
     /// Handle keys in Projects view
     async fn handle_projects_key(&mut self, key: KeyEvent) -> Result<()> {
         // Calculate grid dimensions for navigation
@@ -668,12 +674,18 @@ impl App {
                             self.state.form_priority,
                         )
                         .await;
-                    if result.is_ok() {
+                    if let Ok(new_id) = result {
                         if let Ok(issues) = self.daemon.list_issues(path).await {
                             self.state.issues = issues;
                         }
-                        self.state.clear_form();
-                        self.go_back();
+                        self.state.selected_issue_id = Some(new_id.clone());
+                        self.navigate_to_created_item(
+                            View::IssueDetail,
+                            ViewParams {
+                                issue_id: Some(new_id),
+                                ..Default::default()
+                            },
+                        );
                     } else {
                         self.status_message = Some("Failed to create issue".to_string());
                     }
@@ -825,12 +837,18 @@ impl App {
                             &self.state.form_target_branch,
                         )
                         .await;
-                    if result.is_ok() {
+                    if let Ok(new_id) = result {
                         if let Ok(prs) = self.daemon.list_prs(path).await {
                             self.state.prs = prs;
                         }
-                        self.state.clear_form();
-                        self.go_back();
+                        self.state.selected_pr_id = Some(new_id.clone());
+                        self.navigate_to_created_item(
+                            View::PrDetail,
+                            ViewParams {
+                                pr_id: Some(new_id),
+                                ..Default::default()
+                            },
+                        );
                     }
                 }
             }
@@ -951,12 +969,18 @@ impl App {
                             slug,
                         )
                         .await;
-                    if result.is_ok() {
+                    if let Ok(new_slug) = result {
                         if let Ok(docs) = self.daemon.list_docs(path).await {
                             self.state.docs = docs;
                         }
-                        self.state.clear_form();
-                        self.go_back();
+                        self.state.selected_doc_slug = Some(new_slug.clone());
+                        self.navigate_to_created_item(
+                            View::DocDetail,
+                            ViewParams {
+                                doc_slug: Some(new_slug),
+                                ..Default::default()
+                            },
+                        );
                     }
                 }
             }
