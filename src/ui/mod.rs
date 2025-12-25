@@ -81,7 +81,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     // Draw error dialog last (on top of everything)
-    if let Some(error_msg) = &app.state.error_dialog {
+    if let Some(error_msg) = app.state.current_error() {
         components::render_error_dialog(frame, error_msg);
     }
 }

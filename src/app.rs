@@ -19,8 +19,6 @@ pub struct App {
     pub daemon: DaemonClient,
     /// Whether the app should quit
     quit: bool,
-    /// Status message to display
-    pub status_message: Option<String>,
     /// Copy feedback message
     pub copy_message: Option<String>,
     /// Splash screen animation state
@@ -57,7 +55,6 @@ impl App {
             state,
             daemon,
             quit: false,
-            status_message: None,
             copy_message: None,
             splash_state: Some(SplashState::new(LogoStyle::default())),
             terminal_size: None,
@@ -98,6 +95,11 @@ impl App {
     /// Check if app should quit
     pub fn should_quit(&self) -> bool {
         self.quit
+    }
+
+    /// Push an error message to the error queue for display
+    pub fn push_error(&mut self, message: impl Into<String>) {
+        self.state.push_error(message.into());
     }
 
     /// Get the sidebar width (0 if no project selected, 20 otherwise)
@@ -465,7 +467,7 @@ impl App {
         let project_path = match &self.state.selected_project_path {
             Some(path) => path.clone(),
             None => {
-                self.status_message = Some("No project selected".to_string());
+                self.push_error("No project selected");
                 return Ok(());
             }
         };
@@ -479,7 +481,7 @@ impl App {
         let issue_id = match issue_id {
             Some(id) => id,
             None => {
-                self.status_message = Some("No issue selected".to_string());
+                self.push_error("No issue selected");
                 return Ok(());
             }
         };
@@ -496,10 +498,9 @@ impl App {
                         self.state.selected_index = max - 1;
                     }
                 }
-                self.status_message = Some("Issue deleted".to_string());
             }
             Err(e) => {
-                self.status_message = Some(format!("Failed to delete issue: {}", e));
+                self.push_error(format!("Failed to delete issue: {}", e));
             }
         }
 
@@ -583,7 +584,7 @@ impl App {
         let project_path = match &self.state.selected_project_path {
             Some(path) => path.clone(),
             None => {
-                self.status_message = Some("No project selected".to_string());
+                self.push_error("No project selected");
                 return Ok(());
             }
         };
@@ -591,7 +592,7 @@ impl App {
         let issue_id = match &self.state.selected_issue_id {
             Some(id) => id.clone(),
             None => {
-                self.status_message = Some("No issue selected".to_string());
+                self.push_error("No issue selected");
                 return Ok(());
             }
         };
@@ -602,7 +603,7 @@ impl App {
             match issue {
                 Some(i) => (i.title.clone(), i.description.clone(), i.metadata.priority),
                 None => {
-                    self.status_message = Some("Issue not found".to_string());
+                    self.push_error("Issue not found");
                     return Ok(());
                 }
             }
@@ -626,10 +627,9 @@ impl App {
                 if let Ok(issues) = self.daemon.list_issues(&project_path).await {
                     self.state.issues = issues;
                 }
-                self.status_message = Some(format!("Status updated to '{}'", new_status));
             }
             Err(e) => {
-                self.status_message = Some(format!("Failed to update status: {}", e));
+                self.push_error(format!("Failed to update status: {}", e));
             }
         }
 
@@ -641,7 +641,7 @@ impl App {
         let project_path = match &self.state.selected_project_path {
             Some(path) => path.clone(),
             None => {
-                self.status_message = Some("No project selected".to_string());
+                self.push_error("No project selected");
                 return Ok(());
             }
         };
@@ -649,7 +649,7 @@ impl App {
         let pr_id = match &self.state.selected_pr_id {
             Some(id) => id.clone(),
             None => {
-                self.status_message = Some("No PR selected".to_string());
+                self.push_error("No PR selected");
                 return Ok(());
             }
         };
@@ -665,7 +665,7 @@ impl App {
                     p.metadata.target_branch.clone(),
                 ),
                 None => {
-                    self.status_message = Some("PR not found".to_string());
+                    self.push_error("PR not found");
                     return Ok(());
                 }
             }
@@ -690,10 +690,9 @@ impl App {
                 if let Ok(prs) = self.daemon.list_prs(&project_path).await {
                     self.state.prs = prs;
                 }
-                self.status_message = Some(format!("PR status updated to '{}'", new_status));
             }
             Err(e) => {
-                self.status_message = Some(format!("Failed to update PR status: {}", e));
+                self.push_error(format!("Failed to update PR status: {}", e));
             }
         }
 
@@ -705,7 +704,7 @@ impl App {
         let project_path = match &self.state.selected_project_path {
             Some(path) => path.clone(),
             None => {
-                self.status_message = Some("No project selected".to_string());
+                self.push_error("No project selected");
                 return Ok(());
             }
         };
@@ -713,14 +712,14 @@ impl App {
         let issue_id = match &self.state.selected_issue_id {
             Some(id) => id.clone(),
             None => {
-                self.status_message = Some("No issue selected".to_string());
+                self.push_error("No issue selected");
                 return Ok(());
             }
         };
 
         let action = self.state.action_panel_llm_action.as_proto_value();
 
-        self.status_message = Some("Opening in VSCode...".to_string());
+        self.copy_message = Some("Opening in VSCode...".to_string());
 
         match self
             .daemon
@@ -729,7 +728,7 @@ impl App {
         {
             Ok(result) => {
                 if result.vscode_opened {
-                    self.status_message = Some(format!(
+                    self.copy_message = Some(format!(
                         "Opened #{} in VSCode (expires: {})",
                         result.display_number,
                         result
@@ -739,7 +738,7 @@ impl App {
                             .unwrap_or(&result.expires_at)
                     ));
                 } else {
-                    self.status_message =
+                    self.copy_message =
                         Some(format!("Workspace created at {}", result.workspace_path));
                 }
             }
@@ -763,7 +762,7 @@ impl App {
                         .replace("Git error: ", "")
                         .replace("Worktree error: ", "")
                 };
-                self.state.error_dialog = Some(user_msg);
+                self.push_error(user_msg);
             }
         }
 
@@ -775,7 +774,7 @@ impl App {
         let project_path = match &self.state.selected_project_path {
             Some(path) => path.clone(),
             None => {
-                self.status_message = Some("No project selected".to_string());
+                self.push_error("No project selected");
                 return Ok(());
             }
         };
@@ -783,12 +782,12 @@ impl App {
         let issue_id = match &self.state.selected_issue_id {
             Some(id) => id.clone(),
             None => {
-                self.status_message = Some("No issue selected".to_string());
+                self.push_error("No issue selected");
                 return Ok(());
             }
         };
 
-        self.status_message = Some("Opening in terminal...".to_string());
+        self.copy_message = Some("Opening in terminal...".to_string());
 
         match self
             .daemon
@@ -797,17 +796,17 @@ impl App {
         {
             Ok(result) => {
                 if result.terminal_opened {
-                    self.status_message = Some(format!(
+                    self.copy_message = Some(format!(
                         "Opened #{} in terminal with {}",
                         result.display_number, result.agent_command
                     ));
                 } else {
-                    self.status_message =
+                    self.copy_message =
                         Some(format!("Agent ready at {}", result.working_directory));
                 }
             }
             Err(e) => {
-                self.status_message = Some(format!("Failed to open: {}", e));
+                self.push_error(format!("Failed to open: {}", e));
             }
         }
 
@@ -954,7 +953,7 @@ impl App {
         };
 
         if !action.enabled {
-            self.status_message = Some(action.disabled_reason.clone());
+            self.push_error(action.disabled_reason.clone());
             return Ok(());
         }
 
@@ -982,10 +981,10 @@ impl App {
                     self.delete_selected_issue().await?;
                 }
                 View::Prs | View::PrDetail => {
-                    self.status_message = Some("Delete PR: Not yet implemented".to_string());
+                    self.push_error("Delete PR: Not yet implemented");
                 }
                 View::Docs | View::DocDetail => {
-                    self.status_message = Some("Delete doc: Not yet implemented".to_string());
+                    self.push_error("Delete doc: Not yet implemented");
                 }
                 _ => {}
             },
@@ -993,10 +992,10 @@ impl App {
             // Duplicate action - contextual based on current view
             "duplicate" => match self.state.current_view {
                 View::Issues | View::IssueDetail => {
-                    self.status_message = Some("Duplicate issue: Not yet implemented".to_string());
+                    self.push_error("Duplicate issue: Not yet implemented");
                 }
                 View::Docs | View::DocDetail => {
-                    self.status_message = Some("Duplicate doc: Not yet implemented".to_string());
+                    self.push_error("Duplicate doc: Not yet implemented");
                 }
                 _ => {}
             },
@@ -1004,10 +1003,10 @@ impl App {
             // Move action - contextual based on current view
             "move" => match self.state.current_view {
                 View::Issues | View::IssueDetail => {
-                    self.status_message = Some("Move issue: Not yet implemented".to_string());
+                    self.push_error("Move issue: Not yet implemented");
                 }
                 View::Docs | View::DocDetail => {
-                    self.status_message = Some("Move doc: Not yet implemented".to_string());
+                    self.push_error("Move doc: Not yet implemented");
                 }
                 _ => {}
             },
@@ -1015,11 +1014,9 @@ impl App {
             // Mode actions (Issue-specific)
             "mode:plan" => {
                 self.state.action_panel_llm_action = LlmAction::Plan;
-                self.status_message = Some("Mode set to Plan".to_string());
             }
             "mode:implement" => {
                 self.state.action_panel_llm_action = LlmAction::Implement;
-                self.status_message = Some("Mode set to Implement".to_string());
             }
 
             // External actions
@@ -1045,7 +1042,7 @@ impl App {
             }
 
             _ => {
-                self.status_message = Some(format!("Unknown action: {}", action.id));
+                self.push_error(format!("Unknown action: {}", action.id));
             }
         }
 
@@ -1152,7 +1149,7 @@ impl App {
                 if create_new {
                     // Clear form for next issue
                     self.state.clear_form();
-                    self.status_message = Some("Issue created! Ready for next issue.".to_string());
+                    self.copy_message = Some("Issue created! Ready for next issue.".to_string());
                 } else {
                     self.state.selected_issue_id = Some(new_id.clone());
                     let msg = if draft {
@@ -1160,7 +1157,7 @@ impl App {
                     } else {
                         "Issue created!"
                     };
-                    self.status_message = Some(msg.to_string());
+                    self.copy_message = Some(msg.to_string());
                     self.navigate_to_created_item(
                         View::IssueDetail,
                         ViewParams {
@@ -1170,10 +1167,10 @@ impl App {
                     );
                 }
             } else {
-                self.status_message = Some("Failed to create issue".to_string());
+                self.push_error("Failed to create issue");
             }
         } else {
-            self.status_message = Some("No project selected".to_string());
+            self.push_error("No project selected");
         }
     }
 
@@ -1232,14 +1229,14 @@ impl App {
                     self.state.clear_form();
                     self.go_back();
                 } else {
-                    self.status_message = Some("Failed to update issue".to_string());
+                    self.push_error("Failed to update issue");
                 }
             }
             (None, _) => {
-                self.status_message = Some("No project selected".to_string());
+                self.push_error("No project selected");
             }
             (_, None) => {
-                self.status_message = Some("No issue selected".to_string());
+                self.push_error("No issue selected");
             }
         }
     }
@@ -1429,10 +1426,10 @@ impl App {
                     },
                 );
             } else {
-                self.status_message = Some("Failed to create PR".to_string());
+                self.push_error("Failed to create PR");
             }
         } else {
-            self.status_message = Some("No project selected".to_string());
+            self.push_error("No project selected");
         }
     }
 
@@ -1487,14 +1484,14 @@ impl App {
                     self.state.clear_form();
                     self.go_back();
                 } else {
-                    self.status_message = Some("Failed to update PR".to_string());
+                    self.push_error("Failed to update PR");
                 }
             }
             (None, _) => {
-                self.status_message = Some("No project selected".to_string());
+                self.push_error("No project selected");
             }
             (_, None) => {
-                self.status_message = Some("No PR selected".to_string());
+                self.push_error("No PR selected");
             }
         }
     }
@@ -1679,10 +1676,10 @@ impl App {
                     },
                 );
             } else {
-                self.status_message = Some("Failed to create doc".to_string());
+                self.push_error("Failed to create doc");
             }
         } else {
-            self.status_message = Some("No project selected".to_string());
+            self.push_error("No project selected");
         }
     }
 

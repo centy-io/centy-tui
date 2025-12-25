@@ -112,7 +112,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                     if is_copy_shortcut && app.state.selection.has_selection() {
                         // Copy selection
                         if let Err(e) = app.copy_selection() {
-                            app.status_message = Some(format!("Copy failed: {}", e));
+                            app.push_error(format!("Copy failed: {}", e));
                         }
                         app.last_ctrl_c = None;
                         continue;
@@ -127,7 +127,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                             }
                         }
                         app.last_ctrl_c = Some(now);
-                        app.status_message = Some("Press ^C again to quit".to_string());
+                        app.copy_message = Some("Press ^C again to quit".to_string());
                         continue;
                     }
 
