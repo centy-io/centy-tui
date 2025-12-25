@@ -114,6 +114,16 @@ impl DaemonClient {
                 issue_count: p.issue_count,
                 doc_count: p.doc_count,
                 pr_count: 0, // PR count not in proto, will need to be added or fetched separately
+                organization_slug: if p.organization_slug.is_empty() {
+                    None
+                } else {
+                    Some(p.organization_slug)
+                },
+                organization_name: if p.organization_name.is_empty() {
+                    None
+                } else {
+                    Some(p.organization_name)
+                },
             })
             .collect();
 

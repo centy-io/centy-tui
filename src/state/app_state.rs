@@ -290,6 +290,8 @@ pub struct Project {
     pub issue_count: u32,
     pub doc_count: u32,
     pub pr_count: u32,
+    pub organization_slug: Option<String>,
+    pub organization_name: Option<String>,
 }
 
 impl Project {
@@ -299,6 +301,14 @@ impl Project {
             .or(self.project_title.as_deref())
             .unwrap_or(&self.name)
     }
+}
+
+/// A section in the grouped projects view
+#[derive(Debug, Clone)]
+pub struct ProjectSection<'a> {
+    pub header: String,
+    pub is_favorites: bool,
+    pub projects: Vec<&'a Project>,
 }
 
 /// Issue metadata
@@ -660,6 +670,7 @@ impl AppState {
     }
 
     /// Move selection up in grid (by one row)
+    #[allow(dead_code)]
     pub fn move_selection_up_grid(&mut self, columns: usize) {
         if columns == 0 {
             return;
@@ -670,6 +681,7 @@ impl AppState {
     }
 
     /// Move selection down in grid (by one row)
+    #[allow(dead_code)]
     pub fn move_selection_down_grid(&mut self, columns: usize, total: usize) {
         if columns == 0 || total == 0 {
             return;
@@ -695,10 +707,166 @@ impl AppState {
         }
     }
 
+    /// Move selection down in grouped grid (by one row)
+    /// Handles crossing section boundaries
+    pub fn move_selection_down_grouped_grid(&mut self, columns: usize) {
+        let sections = self.grouped_projects();
+        let total = self.selectable_projects().len();
+
+        if columns == 0 || total == 0 || sections.is_empty() {
+            return;
+        }
+
+        // Find which section and position within section
+        let (section_idx, pos_in_section) = self.find_section_position(self.selected_index);
+
+        if section_idx >= sections.len() {
+            return;
+        }
+
+        let section = &sections[section_idx];
+        let section_size = section.projects.len();
+        let current_row_in_section = pos_in_section / columns;
+        let current_col = pos_in_section % columns;
+        let rows_in_section = section_size.div_ceil(columns);
+
+        if current_row_in_section + 1 < rows_in_section {
+            // Move within same section
+            let new_pos = (current_row_in_section + 1) * columns + current_col;
+            if new_pos < section_size {
+                let section_start = self.section_start_index(section_idx);
+                self.selected_index = section_start + new_pos;
+            } else {
+                // Partial last row - go to last item in section
+                let section_start = self.section_start_index(section_idx);
+                self.selected_index = section_start + section_size - 1;
+            }
+        } else if section_idx + 1 < sections.len() {
+            // Move to next section
+            let next_section = &sections[section_idx + 1];
+            let next_section_start = self.section_start_index(section_idx + 1);
+            // Try to maintain column position
+            let target_col = current_col.min(next_section.projects.len().saturating_sub(1));
+            self.selected_index = next_section_start + target_col;
+        }
+    }
+
+    /// Move selection up in grouped grid (by one row)
+    /// Handles crossing section boundaries
+    pub fn move_selection_up_grouped_grid(&mut self, columns: usize) {
+        let sections = self.grouped_projects();
+
+        if columns == 0 || sections.is_empty() {
+            return;
+        }
+
+        let (section_idx, pos_in_section) = self.find_section_position(self.selected_index);
+
+        if section_idx >= sections.len() {
+            return;
+        }
+
+        let current_row_in_section = pos_in_section / columns;
+        let current_col = pos_in_section % columns;
+
+        if current_row_in_section > 0 {
+            // Move within same section
+            let new_pos = (current_row_in_section - 1) * columns + current_col;
+            let section_start = self.section_start_index(section_idx);
+            self.selected_index = section_start + new_pos;
+        } else if section_idx > 0 {
+            // Move to previous section's last row
+            let prev_section = &sections[section_idx - 1];
+            let prev_section_start = self.section_start_index(section_idx - 1);
+            let prev_section_size = prev_section.projects.len();
+            let prev_rows = prev_section_size.div_ceil(columns);
+            let last_row_start = (prev_rows - 1) * columns;
+
+            // Try to maintain column position
+            let target_pos = last_row_start + current_col;
+            if target_pos < prev_section_size {
+                self.selected_index = prev_section_start + target_pos;
+            } else {
+                self.selected_index = prev_section_start + prev_section_size - 1;
+            }
+        }
+    }
+
+    /// Helper: Find section index and position within section for a global index
+    fn find_section_position(&self, global_index: usize) -> (usize, usize) {
+        let sections = self.grouped_projects();
+        let mut offset = 0;
+
+        for (i, section) in sections.iter().enumerate() {
+            let section_size = section.projects.len();
+            if global_index < offset + section_size {
+                return (i, global_index - offset);
+            }
+            offset += section_size;
+        }
+
+        (sections.len(), 0) // Past end
+    }
+
+    /// Helper: Get starting index for a section
+    fn section_start_index(&self, section_idx: usize) -> usize {
+        let sections = self.grouped_projects();
+        sections
+            .iter()
+            .take(section_idx)
+            .map(|s| s.projects.len())
+            .sum()
+    }
+
     /// Reset selection
     pub fn reset_selection(&mut self) {
         self.selected_index = 0;
         self.scroll_offset = 0;
+    }
+
+    /// Calculate the Y position of a project card given its index and grid columns
+    /// Returns (y_start, y_end) in content coordinates (before scroll offset)
+    pub fn project_y_position(&self, project_index: usize, columns: usize) -> (usize, usize) {
+        const SECTION_HEADER_HEIGHT: usize = 2;
+        const CARD_HEIGHT: usize = 4;
+
+        let sections = self.grouped_projects();
+        let mut y_offset: usize = 0;
+        let mut current_index: usize = 0;
+
+        for section in &sections {
+            y_offset += SECTION_HEADER_HEIGHT;
+
+            let section_size = section.projects.len();
+
+            if project_index < current_index + section_size {
+                // Project is in this section
+                let pos_in_section = project_index - current_index;
+                let row = pos_in_section / columns;
+                let card_y = y_offset + row * CARD_HEIGHT;
+                return (card_y, card_y + CARD_HEIGHT);
+            }
+
+            let rows_in_section = section_size.div_ceil(columns);
+            y_offset += rows_in_section * CARD_HEIGHT;
+            current_index += section_size;
+        }
+
+        (y_offset, y_offset + CARD_HEIGHT)
+    }
+
+    /// Ensure the selected project is visible by adjusting scroll offset
+    pub fn ensure_selected_visible(&mut self, columns: usize, visible_height: usize) {
+        let (card_y_start, card_y_end) = self.project_y_position(self.selected_index, columns);
+
+        // If card is above visible area, scroll up
+        if card_y_start < self.scroll_offset {
+            self.scroll_offset = card_y_start;
+        }
+        // If card is below visible area, scroll down
+        else if card_y_end > self.scroll_offset + visible_height {
+            self.scroll_offset = card_y_end.saturating_sub(visible_height);
+        }
     }
 
     /// Scroll down
@@ -746,10 +914,85 @@ impl AppState {
     }
 
     /// Get sorted projects (favorites first)
+    #[allow(dead_code)]
     pub fn sorted_projects(&self) -> Vec<&Project> {
         let mut projects: Vec<_> = self.projects.iter().collect();
         projects.sort_by(|a, b| b.is_favorite.cmp(&a.is_favorite));
         projects
+    }
+
+    /// Get projects grouped by organization with favorites section first
+    /// Returns sections in order:
+    /// 1. Favorites (all favorited projects, regardless of org)
+    /// 2. Organization groups (sorted alphabetically by org name)
+    /// 3. Ungrouped (projects without organization)
+    pub fn grouped_projects(&self) -> Vec<ProjectSection<'_>> {
+        use std::collections::HashMap;
+
+        let mut sections = Vec::new();
+
+        // 1. Collect all favorites first
+        let favorites: Vec<&Project> = self.projects.iter().filter(|p| p.is_favorite).collect();
+
+        if !favorites.is_empty() {
+            sections.push(ProjectSection {
+                header: "Favorites".to_string(),
+                is_favorites: true,
+                projects: favorites,
+            });
+        }
+
+        // 2. Group remaining non-favorite projects by organization
+        let mut org_groups: HashMap<String, Vec<&Project>> = HashMap::new();
+        let mut ungrouped: Vec<&Project> = Vec::new();
+
+        for project in self.projects.iter().filter(|p| !p.is_favorite) {
+            if let Some(org_slug) = &project.organization_slug {
+                org_groups.entry(org_slug.clone()).or_default().push(project);
+            } else {
+                ungrouped.push(project);
+            }
+        }
+
+        // Sort organization groups alphabetically and add them
+        let mut org_keys: Vec<_> = org_groups.keys().cloned().collect();
+        org_keys.sort();
+
+        for org_slug in org_keys {
+            if let Some(projects) = org_groups.get(&org_slug) {
+                // Get display name from first project in group
+                let org_name = projects
+                    .first()
+                    .and_then(|p| p.organization_name.clone())
+                    .unwrap_or_else(|| org_slug.clone());
+
+                sections.push(ProjectSection {
+                    header: org_name,
+                    is_favorites: false,
+                    projects: projects.clone(),
+                });
+            }
+        }
+
+        // 3. Add ungrouped section at the end
+        if !ungrouped.is_empty() {
+            sections.push(ProjectSection {
+                header: "Ungrouped".to_string(),
+                is_favorites: false,
+                projects: ungrouped,
+            });
+        }
+
+        sections
+    }
+
+    /// Get flat list of selectable projects (for index-based navigation)
+    /// This maintains the grouped order but returns only projects
+    pub fn selectable_projects(&self) -> Vec<&Project> {
+        self.grouped_projects()
+            .into_iter()
+            .flat_map(|section| section.projects)
+            .collect()
     }
 
     /// Get sorted issues

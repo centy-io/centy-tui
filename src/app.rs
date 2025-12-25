@@ -130,6 +130,14 @@ impl App {
         columns.max(1)
     }
 
+    /// Calculate visible height for project grid (inner content area)
+    pub fn calculate_project_grid_visible_height(&self) -> usize {
+        // terminal_size is (height, width)
+        let height = self.terminal_size.map(|(h, _)| h).unwrap_or(24);
+        // Subtract outer borders (2) for the projects block
+        height.saturating_sub(2) as usize
+    }
+
     /// Calculate which action was clicked based on mouse row position
     ///
     /// The action panel layout is:
@@ -257,27 +265,32 @@ impl App {
     async fn handle_projects_key(&mut self, key: KeyEvent) -> Result<()> {
         // Calculate grid dimensions for navigation
         let columns = self.calculate_project_grid_columns();
-        let total = self.state.sorted_projects().len();
+        let visible_height = self.calculate_project_grid_visible_height();
+        let total = self.state.selectable_projects().len();
 
         match key.code {
-            // Vertical navigation (moves by row in grid)
+            // Vertical navigation (moves by row in grid, section-aware)
             KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down_grid(columns, total);
+                self.state.move_selection_down_grouped_grid(columns);
+                self.state.ensure_selected_visible(columns, visible_height);
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                self.state.move_selection_up_grid(columns);
+                self.state.move_selection_up_grouped_grid(columns);
+                self.state.ensure_selected_visible(columns, visible_height);
             }
             // Horizontal navigation (moves within row in grid)
             KeyCode::Char('h') | KeyCode::Left => {
                 self.state.move_selection_left(columns);
+                self.state.ensure_selected_visible(columns, visible_height);
             }
             KeyCode::Char('l') | KeyCode::Right => {
                 self.state.move_selection_right(columns, total);
+                self.state.ensure_selected_visible(columns, visible_height);
             }
             KeyCode::Enter => {
                 let project_path = self
                     .state
-                    .sorted_projects()
+                    .selectable_projects()
                     .get(self.state.selected_index)
                     .map(|p| p.path.clone());
                 if let Some(path) = project_path {
@@ -294,7 +307,7 @@ impl App {
             KeyCode::Char('f') => {
                 let project_path = self
                     .state
-                    .sorted_projects()
+                    .selectable_projects()
                     .get(self.state.selected_index)
                     .map(|p| p.path.clone());
                 if let Some(path) = project_path {
@@ -315,7 +328,7 @@ impl App {
             KeyCode::Char('a') => {
                 let project_path = self
                     .state
-                    .sorted_projects()
+                    .selectable_projects()
                     .get(self.state.selected_index)
                     .map(|p| p.path.clone());
                 if let Some(path) = project_path {
@@ -1762,9 +1775,11 @@ impl App {
         const MIN_CARD_WIDTH: u16 = 18;
         const CARD_HEIGHT: u16 = 4;
         const CARD_SPACING_H: u16 = 1;
+        const SECTION_HEADER_HEIGHT: u16 = 2;
 
         let columns = self.calculate_project_grid_columns();
-        let total = self.state.sorted_projects().len();
+        let visible_height = self.calculate_project_grid_visible_height();
+        let total = self.state.selectable_projects().len();
 
         if total == 0 {
             return Ok(());
@@ -1783,63 +1798,94 @@ impl App {
 
         match mouse.kind {
             MouseEventKind::ScrollUp => {
-                self.state.move_selection_up_grid(columns);
+                self.state.move_selection_up_grouped_grid(columns);
+                self.state.ensure_selected_visible(columns, visible_height);
             }
             MouseEventKind::ScrollDown => {
-                self.state.move_selection_down_grid(columns, total);
+                self.state.move_selection_down_grouped_grid(columns);
+                self.state.ensure_selected_visible(columns, visible_height);
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 if mouse.column >= main_area_start_x && mouse.row >= GRID_START_Y {
                     let rel_x = mouse.column - main_area_start_x - 1; // -1 for border
-                    let rel_y = mouse.row - GRID_START_Y;
+                    // Account for scroll offset when calculating click position
+                    let scroll_offset = self.state.scroll_offset as u16;
+                    let rel_y = mouse.row - GRID_START_Y + scroll_offset;
 
-                    // Calculate which card was clicked
-                    let col = (rel_x / (card_width + CARD_SPACING_H)) as usize;
-                    let row = (rel_y / CARD_HEIGHT) as usize;
+                    // Calculate which card was clicked, accounting for section headers
+                    let sections = self.state.grouped_projects();
+                    let mut y_offset: u16 = 0;
+                    let mut global_project_index: usize = 0;
+                    let mut clicked_index: Option<usize> = None;
 
-                    if col < columns {
-                        let clicked_index = row * columns + col;
-                        if clicked_index < total {
-                            // Check for double-click: same index clicked within 400ms
-                            let is_double_click = self
-                                .state
-                                .last_click_index
-                                .map(|last_idx| {
-                                    last_idx == clicked_index
-                                        && self
-                                            .state
-                                            .last_click_time
-                                            .map(|t| t.elapsed() < Duration::from_millis(400))
-                                            .unwrap_or(false)
-                                })
-                                .unwrap_or(false);
+                    for section in &sections {
+                        // Skip section header area
+                        y_offset += SECTION_HEADER_HEIGHT;
 
-                            if is_double_click {
-                                // Double-click: open the project
-                                let project_path = self
-                                    .state
-                                    .sorted_projects()
-                                    .get(clicked_index)
-                                    .map(|p| p.path.clone());
-                                if let Some(path) = project_path {
-                                    self.state.selected_project_path = Some(path.clone());
-                                    if let Ok(issues) = self.daemon.list_issues(&path).await {
-                                        self.state.issues = issues;
-                                    }
-                                    if let Ok(config) = self.daemon.get_config(&path).await {
-                                        self.state.config = Some(config);
-                                    }
-                                    self.navigate(View::Issues, ViewParams::default());
+                        let section_size = section.projects.len();
+                        let rows_in_section =
+                            section_size.div_ceil(columns);
+                        let section_height = (rows_in_section as u16) * CARD_HEIGHT;
+
+                        // Check if click is in this section's project area
+                        if rel_y >= y_offset && rel_y < y_offset + section_height {
+                            let rel_y_in_section = rel_y - y_offset;
+                            let row_in_section = (rel_y_in_section / CARD_HEIGHT) as usize;
+                            let col = (rel_x / (card_width + CARD_SPACING_H)) as usize;
+
+                            if col < columns {
+                                let idx_in_section = row_in_section * columns + col;
+                                if idx_in_section < section_size {
+                                    clicked_index = Some(global_project_index + idx_in_section);
                                 }
-                                // Reset click tracking after opening
-                                self.state.last_click_time = None;
-                                self.state.last_click_index = None;
-                            } else {
-                                // Single click: select the card and update tracking
-                                self.state.selected_index = clicked_index;
-                                self.state.last_click_time = Some(Instant::now());
-                                self.state.last_click_index = Some(clicked_index);
                             }
+                            break;
+                        }
+
+                        y_offset += section_height;
+                        global_project_index += section_size;
+                    }
+
+                    if let Some(clicked_idx) = clicked_index {
+                        // Check for double-click: same index clicked within 400ms
+                        let is_double_click = self
+                            .state
+                            .last_click_index
+                            .map(|last_idx| {
+                                last_idx == clicked_idx
+                                    && self
+                                        .state
+                                        .last_click_time
+                                        .map(|t| t.elapsed() < Duration::from_millis(400))
+                                        .unwrap_or(false)
+                            })
+                            .unwrap_or(false);
+
+                        if is_double_click {
+                            // Double-click: open the project
+                            let project_path = self
+                                .state
+                                .selectable_projects()
+                                .get(clicked_idx)
+                                .map(|p| p.path.clone());
+                            if let Some(path) = project_path {
+                                self.state.selected_project_path = Some(path.clone());
+                                if let Ok(issues) = self.daemon.list_issues(&path).await {
+                                    self.state.issues = issues;
+                                }
+                                if let Ok(config) = self.daemon.get_config(&path).await {
+                                    self.state.config = Some(config);
+                                }
+                                self.navigate(View::Issues, ViewParams::default());
+                            }
+                            // Reset click tracking after opening
+                            self.state.last_click_time = None;
+                            self.state.last_click_index = None;
+                        } else {
+                            // Single click: select the card and update tracking
+                            self.state.selected_index = clicked_idx;
+                            self.state.last_click_time = Some(Instant::now());
+                            self.state.last_click_index = Some(clicked_idx);
                         }
                     }
                 }
