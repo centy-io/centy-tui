@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Plan Issue #67",
+      "type": "shell",
+      "command": "centy",
+      "args": ["issue", "36d06bb5-7b10-4b0d-a4c1-fc977c06c614", "--action", "plan"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -2,17 +2,17 @@
 //!
 //! Layout:
 //! +------------------------------------------+
-//! |     |  Center Content          | Actions |
-//! | Left|  (Title, Description)    | Panel   |
-//! |Sidebar|                        |         |
-//! | (future)                       |         |
-//! |     +---------------------------+         |
-//! |     |  Bottom Config Section    |         |
+//! | Local |  Center Content        | Daemon  |
+//! |Actions|  (Title, Description)  | Actions |
+//! |       |                        |         |
+//! |       |                        |         |
+//! |       +------------------------+         |
+//! |       |  Bottom Config Section |         |
 //! +------------------------------------------+
 
 use super::field_renderer::draw_field_with_value;
 use crate::app::App;
-use crate::ui::render_action_panel;
+use crate::ui::render_daemon_actions;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -79,9 +79,9 @@ pub fn draw_edit_page(frame: &mut Frame, area: Rect, app: &App, config: &EditPag
         }
     }
 
-    // Draw action panel (same dynamic panel as detail views)
+    // Draw daemon actions panel (same dynamic panel as detail views)
     let is_action_focused = is_action_panel_focused(app, &config.entity_type);
-    render_action_panel(frame, action_area, app, is_action_focused);
+    render_daemon_actions(frame, action_area, app, is_action_focused);
 }
 
 /// Check if action panel should be focused based on current form field

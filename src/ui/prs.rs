@@ -25,9 +25,9 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
     // Draw the PRs list content
     draw_prs_list_content(frame, list_area, app);
 
-    // Draw the action panel
+    // Draw the daemon actions panel
     let is_focused = matches!(app.state.prs_list_focus, PrsListFocus::ActionPanel);
-    super::render_action_panel(frame, action_area, app, is_focused);
+    super::render_daemon_actions(frame, action_area, app, is_focused);
 }
 
 /// Draw the PRs list content (left side)
@@ -191,9 +191,9 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
     // Draw content
     draw_pr_detail_content(frame, content_area, app);
 
-    // Draw action panel
+    // Draw daemon actions panel
     let is_focused = matches!(app.state.pr_detail_focus, PrDetailFocus::ActionPanel);
-    super::render_action_panel(frame, action_area, app, is_focused);
+    super::render_daemon_actions(frame, action_area, app, is_focused);
 }
 
 /// Draw PR detail content (left side)
