@@ -15,8 +15,11 @@ pub use components::BUTTON_HEIGHT;
 pub use widgets::render_scrollable_list;
 
 use crate::app::App;
-use crate::state::{ScreenPos, View};
-use ratatui::style::Modifier;
+use crate::state::{ActionCategory, ScreenPos, View};
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 /// Main draw function
@@ -130,4 +133,121 @@ fn apply_selection_highlight(
             }
         }
     }
+}
+
+/// Get style for an action category
+fn get_category_style(category: ActionCategory, destructive: bool) -> Style {
+    if destructive {
+        return Style::default().fg(Color::Red);
+    }
+    match category {
+        ActionCategory::Crud => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        ActionCategory::Mode => Style::default().fg(Color::Yellow),
+        ActionCategory::Status => Style::default().fg(Color::Cyan),
+        ActionCategory::External => Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ActionCategory::Unspecified => Style::default().fg(Color::White),
+    }
+}
+
+/// Render a dynamic action panel
+///
+/// This is a shared component used by Issues, PRs, and Docs views.
+pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused: bool) {
+    let border_color = if is_focused {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
+    let selected_idx = app.state.action_panel_selected_index;
+
+    let mut content: Vec<Line> = vec![Line::from("")];
+
+    // Show loading state
+    if app.state.actions_loading {
+        content.push(Line::from(Span::styled(
+            "  Loading...",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else if let Some(error) = &app.state.actions_error {
+        content.push(Line::from(Span::styled(
+            format!("  Error: {}", error),
+            Style::default().fg(Color::Red),
+        )));
+    } else if app.state.current_actions.actions.is_empty() {
+        content.push(Line::from(Span::styled(
+            "  No actions",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        // Render actions grouped by category
+        let mut action_idx = 0;
+        for (category, actions) in app.state.current_actions.grouped_actions() {
+            // Category header
+            content.push(Line::from(Span::styled(
+                format!(" {}:", category.label().to_uppercase()),
+                Style::default().fg(Color::DarkGray),
+            )));
+
+            for action in actions {
+                let is_selected = is_focused && action_idx == selected_idx;
+
+                let prefix = if is_selected {
+                    Span::styled(" > ", Style::default().fg(Color::Cyan))
+                } else {
+                    Span::raw("   ")
+                };
+
+                // Action style based on enabled state and category
+                let action_style = if !action.enabled {
+                    Style::default().fg(Color::DarkGray) // Grayed out
+                } else {
+                    get_category_style(action.category, action.destructive)
+                };
+
+                // Show shortcut hint if available
+                let shortcut_hint = if !action.keyboard_shortcut.is_empty() {
+                    format!(" [{}]", action.keyboard_shortcut)
+                } else {
+                    String::new()
+                };
+
+                content.push(Line::from(vec![
+                    prefix,
+                    Span::styled(&action.label, action_style),
+                    Span::styled(shortcut_hint, Style::default().fg(Color::DarkGray)),
+                ]));
+
+                action_idx += 1;
+            }
+
+            content.push(Line::from("")); // Space between categories
+        }
+    }
+
+    // Help text
+    content.push(Line::from(Span::styled(
+        " ".to_string() + &"-".repeat(16),
+        Style::default().fg(Color::DarkGray),
+    )));
+    content.push(Line::from(Span::styled(
+        " j/k navigate",
+        Style::default().fg(Color::DarkGray),
+    )));
+    content.push(Line::from(Span::styled(
+        " Enter to select",
+        Style::default().fg(Color::DarkGray),
+    )));
+    content.push(Line::from(Span::styled(
+        " Tab switch panel",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let panel = Paragraph::new(content).block(
+        Block::default()
+            .title(" Actions ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color)),
+    );
+
+    frame.render_widget(panel, area);
 }

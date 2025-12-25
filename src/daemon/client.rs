@@ -4,7 +4,8 @@
 //! via gRPC using the generated proto types.
 
 use crate::state::{
-    Config, DaemonInfo, Doc, Issue, IssueMetadata, PrMetadata, Project, PullRequest,
+    ActionCategory, Config, DaemonInfo, Doc, EntityAction, EntityActionsResponse, EntityType,
+    Issue, IssueMetadata, PrMetadata, Project, PullRequest,
 };
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
@@ -632,6 +633,55 @@ impl DaemonClient {
         self.client = None;
 
         Ok(())
+    }
+
+    /// Get available actions for an entity
+    pub async fn get_entity_actions(
+        &mut self,
+        project_path: &str,
+        entity_type: EntityType,
+        entity_id: Option<&str>,
+    ) -> Result<EntityActionsResponse> {
+        let client = self.ensure_connected().await?;
+
+        let proto_entity_type = match entity_type {
+            EntityType::Issue => proto::EntityType::Issue as i32,
+            EntityType::Pr => proto::EntityType::Pr as i32,
+            EntityType::Doc => proto::EntityType::Doc as i32,
+        };
+
+        let request = tonic::Request::new(proto::GetEntityActionsRequest {
+            project_path: project_path.to_string(),
+            entity_type: proto_entity_type,
+            entity_id: entity_id.unwrap_or("").to_string(),
+        });
+
+        let response = client
+            .get_entity_actions(request)
+            .await
+            .map_err(|e| anyhow!("Failed to get entity actions: {}", e))?;
+
+        let inner = response.into_inner();
+
+        if !inner.success {
+            return Err(anyhow!("Failed to get entity actions: {}", inner.error));
+        }
+
+        let actions = inner
+            .actions
+            .into_iter()
+            .map(|a| EntityAction {
+                id: a.id,
+                label: a.label,
+                category: ActionCategory::from_proto(a.category),
+                enabled: a.enabled,
+                disabled_reason: a.disabled_reason,
+                destructive: a.destructive,
+                keyboard_shortcut: a.keyboard_shortcut,
+            })
+            .collect();
+
+        Ok(EntityActionsResponse { actions })
     }
 }
 

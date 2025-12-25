@@ -134,6 +134,19 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
     let hints = get_view_hints(&app.state.current_view);
     spans.push(Span::styled(hints, Style::default().fg(Color::DarkGray)));
 
+    // Show disabled reason when action panel is focused and action is disabled
+    if app.state.is_action_panel_focused() {
+        if let Some(action) = app.state.selected_action() {
+            if !action.enabled && !action.disabled_reason.is_empty() {
+                spans.push(Span::raw(" | "));
+                spans.push(Span::styled(
+                    &action.disabled_reason,
+                    Style::default().fg(Color::Red),
+                ));
+            }
+        }
+    }
+
     // Copy message
     if let Some(msg) = &app.copy_message {
         spans.push(Span::raw(" | "));

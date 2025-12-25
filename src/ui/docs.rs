@@ -1,9 +1,10 @@
 //! Documentation list and detail views
 
 use crate::app::App;
+use crate::state::{DocDetailFocus, DocsListFocus};
 use super::render_scrollable_list;
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
@@ -12,6 +13,31 @@ use ratatui::{
 
 /// Draw the docs list
 pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
+    // Split area into content (left) and action panel (right)
+    let h_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(22)])
+        .split(area);
+
+    let list_area = h_chunks[0];
+    let action_area = h_chunks[1];
+
+    // Draw the docs list content
+    draw_docs_list_content(frame, list_area, app);
+
+    // Draw the action panel
+    let is_focused = matches!(app.state.docs_list_focus, DocsListFocus::ActionPanel);
+    super::render_action_panel(frame, action_area, app, is_focused);
+}
+
+/// Draw the docs list content (left side)
+fn draw_docs_list_content(frame: &mut Frame, area: Rect, app: &App) {
+    // Border color based on focus
+    let border_color = match app.state.docs_list_focus {
+        DocsListFocus::List => Color::Cyan,
+        DocsListFocus::ActionPanel => Color::DarkGray,
+    };
+
     let docs = &app.state.docs;
     let project_name = app
         .state
@@ -27,7 +53,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
                 Block::default()
                     .title(format!(" Docs - {} ", project_name))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(Style::default().fg(border_color)),
             );
         frame.render_widget(content, area);
         return;
@@ -61,7 +87,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         Block::default()
             .title(format!(" Docs - {} ", project_name))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
+            .border_style(Style::default().fg(border_color)),
     );
 
     render_scrollable_list(frame, area, list, app.state.selected_index);
@@ -69,6 +95,31 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Draw doc detail view
 pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
+    // Split area into content (left) and action panel (right)
+    let h_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(22)])
+        .split(area);
+
+    let content_area = h_chunks[0];
+    let action_area = h_chunks[1];
+
+    // Draw content
+    draw_doc_detail_content(frame, content_area, app);
+
+    // Draw action panel
+    let is_focused = matches!(app.state.doc_detail_focus, DocDetailFocus::ActionPanel);
+    super::render_action_panel(frame, action_area, app, is_focused);
+}
+
+/// Draw doc detail content (left side)
+fn draw_doc_detail_content(frame: &mut Frame, area: Rect, app: &App) {
+    // Border color based on focus
+    let border_color = match app.state.doc_detail_focus {
+        DocDetailFocus::Content => Color::Cyan,
+        DocDetailFocus::ActionPanel => Color::DarkGray,
+    };
+
     let doc = app
         .state
         .selected_doc_slug
@@ -82,7 +133,7 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
                 Block::default()
                     .title(" Doc ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(Style::default().fg(border_color)),
             );
         frame.render_widget(message, area);
         return;
@@ -153,7 +204,7 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
             Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(Style::default().fg(border_color)),
         )
         .wrap(Wrap { trim: false })
         .scroll((app.state.scroll_offset as u16, 0));

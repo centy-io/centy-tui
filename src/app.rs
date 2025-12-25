@@ -2,8 +2,9 @@
 
 use crate::daemon::DaemonClient;
 use crate::state::{
-    AppState, IssueDetailFocus, IssuesListFocus, LlmAction, LogoStyle, ScreenBuffer, ScreenPos,
-    SplashState, View, ViewParams,
+    AppState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus, IssuesListFocus,
+    LlmAction, LogoStyle, PrDetailFocus, PrsListFocus, ScreenBuffer, ScreenPos, SplashState, View,
+    ViewParams,
 };
 use crate::ui::BUTTON_HEIGHT;
 use anyhow::Result;
@@ -302,7 +303,14 @@ impl App {
 
     /// Handle keys in Issues view
     async fn handle_issues_key(&mut self, key: KeyEvent) -> Result<()> {
-        const TOTAL_ACTIONS: usize = 3; // Create, Move, Delete
+        // Check for dynamic action shortcut first (when focused on list)
+        if matches!(self.state.issues_list_focus, IssuesListFocus::List) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
 
         match key.code {
             // Tab: Switch focus between list and action panel
@@ -315,8 +323,7 @@ impl App {
                         .move_selection_down(self.state.sorted_issues().len());
                 } else {
                     // Navigate down in action panel
-                    self.state.issues_list_action_index =
-                        (self.state.issues_list_action_index + 1) % TOTAL_ACTIONS;
+                    self.state.action_panel_down();
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
@@ -324,13 +331,12 @@ impl App {
                     self.state.move_selection_up();
                 } else {
                     // Navigate up in action panel
-                    self.state.issues_list_action_index =
-                        (self.state.issues_list_action_index + TOTAL_ACTIONS - 1) % TOTAL_ACTIONS;
+                    self.state.action_panel_up();
                 }
             }
             KeyCode::Enter => {
                 if matches!(self.state.issues_list_focus, IssuesListFocus::ActionPanel) {
-                    self.execute_issues_list_action().await?;
+                    self.execute_selected_dynamic_action().await?;
                 } else {
                     // Open issue detail
                     let issue_id = self
@@ -350,9 +356,6 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('n') => {
-                self.navigate(View::IssueCreate, ViewParams::default());
-            }
             KeyCode::Char('s') => {
                 self.state.cycle_issue_sort_field();
             }
@@ -366,34 +369,11 @@ impl App {
             KeyCode::Esc | KeyCode::Backspace => {
                 // Reset focus state when leaving
                 self.state.issues_list_focus = IssuesListFocus::List;
-                self.state.issues_list_action_index = 0;
+                self.state.action_panel_selected_index = 0;
                 self.go_back();
             }
             _ => {}
         }
-        Ok(())
-    }
-
-    /// Execute action based on current issues list action panel selection
-    async fn execute_issues_list_action(&mut self) -> Result<()> {
-        let index = self.state.issues_list_action_index;
-
-        match index {
-            0 => {
-                // Create: Navigate to IssueCreate view
-                self.navigate(View::IssueCreate, ViewParams::default());
-            }
-            1 => {
-                // Move: Not yet implemented
-                self.status_message = Some("Move issue: Not yet implemented".to_string());
-            }
-            2 => {
-                // Delete: Delete the selected issue
-                self.delete_selected_issue().await?;
-            }
-            _ => {}
-        }
-
         Ok(())
     }
 
@@ -445,14 +425,14 @@ impl App {
 
     /// Handle keys in Issue Detail view
     async fn handle_issue_detail_key(&mut self, key: KeyEvent) -> Result<()> {
-        // Calculate total items in action panel
-        let state_count = self
-            .state
-            .config
-            .as_ref()
-            .map(|c| c.allowed_states.len())
-            .unwrap_or(0);
-        let total_items = 3 + state_count; // VSCode, Plan, Impl + states
+        // Check for dynamic action shortcut first (when focused on content)
+        if matches!(self.state.issue_detail_focus, IssueDetailFocus::Content) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
 
         match key.code {
             // Tab: Switch focus between content and action panel
@@ -477,8 +457,7 @@ impl App {
                     self.state.scroll_down();
                 } else {
                     // Navigate down in action panel
-                    self.state.action_panel_index =
-                        (self.state.action_panel_index + 1) % total_items;
+                    self.state.action_panel_down();
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
@@ -486,8 +465,7 @@ impl App {
                     self.state.scroll_up();
                 } else {
                     // Navigate up in action panel
-                    self.state.action_panel_index =
-                        (self.state.action_panel_index + total_items - 1) % total_items;
+                    self.state.action_panel_up();
                 }
             }
             KeyCode::Char('d') | KeyCode::PageDown => {
@@ -503,50 +481,17 @@ impl App {
             // Execute action (Enter when action panel is focused)
             KeyCode::Enter => {
                 if matches!(self.state.issue_detail_focus, IssueDetailFocus::ActionPanel) {
-                    self.execute_action_panel_selection().await?;
+                    self.execute_selected_dynamic_action().await?;
                 }
             }
             // Go back (also reset focus and action panel index)
             KeyCode::Esc | KeyCode::Backspace => {
                 self.state.issue_detail_focus = IssueDetailFocus::Content;
-                self.state.action_panel_index = 0;
+                self.state.action_panel_selected_index = 0;
                 self.go_back();
             }
             _ => {}
         }
-        Ok(())
-    }
-
-    /// Execute action based on current action panel selection
-    async fn execute_action_panel_selection(&mut self) -> Result<()> {
-        let index = self.state.action_panel_index;
-
-        match index {
-            0 => {
-                // Open in VSCode
-                self.execute_open_in_vscode().await?;
-            }
-            1 => {
-                // Set Plan mode
-                self.state.action_panel_llm_action = LlmAction::Plan;
-                self.status_message = Some("Mode set to Plan".to_string());
-            }
-            2 => {
-                // Set Implement mode
-                self.state.action_panel_llm_action = LlmAction::Implement;
-                self.status_message = Some("Mode set to Implement".to_string());
-            }
-            _ => {
-                // State selection (index 3+)
-                let state_index = index - 3;
-                if let Some(config) = &self.state.config {
-                    if let Some(new_status) = config.allowed_states.get(state_index) {
-                        self.update_issue_status(new_status.clone()).await?;
-                    }
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -659,6 +604,210 @@ impl App {
         Ok(())
     }
 
+    // =========== Dynamic Actions ===========
+
+    /// Fetch entity actions from daemon
+    pub async fn fetch_entity_actions(&mut self, entity_type: EntityType, entity_id: Option<&str>) {
+        let project_path = match &self.state.selected_project_path {
+            Some(path) => path.clone(),
+            None => return,
+        };
+
+        self.state.actions_loading = true;
+        self.state.actions_error = None;
+
+        match self
+            .daemon
+            .get_entity_actions(&project_path, entity_type, entity_id)
+            .await
+        {
+            Ok(response) => {
+                self.state.current_actions = response;
+                self.state.actions_loading = false;
+                self.state.action_panel_selected_index = 0;
+            }
+            Err(e) => {
+                self.state.actions_error = Some(e.to_string());
+                self.state.actions_loading = false;
+                self.state.current_actions = Default::default();
+            }
+        }
+    }
+
+    /// Refresh actions for current view
+    pub async fn refresh_current_actions(&mut self) {
+        match self.state.current_view {
+            View::Issues => {
+                let entity_id = self
+                    .state
+                    .sorted_issues()
+                    .get(self.state.selected_index)
+                    .map(|i| i.id.clone());
+                self.fetch_entity_actions(EntityType::Issue, entity_id.as_deref())
+                    .await;
+            }
+            View::IssueDetail => {
+                let entity_id = self.state.selected_issue_id.clone();
+                self.fetch_entity_actions(EntityType::Issue, entity_id.as_deref())
+                    .await;
+            }
+            View::Prs => {
+                let entity_id = self
+                    .state
+                    .sorted_prs()
+                    .get(self.state.selected_index)
+                    .map(|p| p.id.clone());
+                self.fetch_entity_actions(EntityType::Pr, entity_id.as_deref())
+                    .await;
+            }
+            View::PrDetail => {
+                let entity_id = self.state.selected_pr_id.clone();
+                self.fetch_entity_actions(EntityType::Pr, entity_id.as_deref())
+                    .await;
+            }
+            View::Docs => {
+                let entity_id = self
+                    .state
+                    .docs
+                    .get(self.state.selected_index)
+                    .map(|d| d.slug.clone());
+                self.fetch_entity_actions(EntityType::Doc, entity_id.as_deref())
+                    .await;
+            }
+            View::DocDetail => {
+                let entity_id = self.state.selected_doc_slug.clone();
+                self.fetch_entity_actions(EntityType::Doc, entity_id.as_deref())
+                    .await;
+            }
+            _ => {}
+        }
+    }
+
+    /// Check if a key event matches an action's keyboard shortcut
+    fn key_matches_shortcut(key: &KeyEvent, shortcut: &str) -> bool {
+        if shortcut.is_empty() {
+            return false;
+        }
+
+        // Parse shortcut format: "n", "d", "Ctrl+D", "Shift+N", "Enter"
+        let parts: Vec<&str> = shortcut.split('+').collect();
+
+        let (expected_modifiers, key_str) = if parts.len() == 2 {
+            let mods = match parts[0].to_lowercase().as_str() {
+                "ctrl" | "control" => KeyModifiers::CONTROL,
+                "shift" => KeyModifiers::SHIFT,
+                "alt" => KeyModifiers::ALT,
+                _ => KeyModifiers::NONE,
+            };
+            (mods, parts[1])
+        } else {
+            (KeyModifiers::NONE, parts[0])
+        };
+
+        // Check modifiers
+        if key.modifiers != expected_modifiers {
+            return false;
+        }
+
+        // Check key
+        match key_str.to_lowercase().as_str() {
+            "enter" => matches!(key.code, KeyCode::Enter),
+            "esc" | "escape" => matches!(key.code, KeyCode::Esc),
+            "tab" => matches!(key.code, KeyCode::Tab),
+            "backspace" => matches!(key.code, KeyCode::Backspace),
+            "delete" => matches!(key.code, KeyCode::Delete),
+            s if s.len() == 1 => {
+                if let Some(c) = s.chars().next() {
+                    matches!(key.code, KeyCode::Char(k) if k.to_ascii_lowercase() == c)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Find action matching a key event
+    fn find_action_for_key(&self, key: &KeyEvent) -> Option<usize> {
+        self.state
+            .current_actions
+            .actions
+            .iter()
+            .position(|a| Self::key_matches_shortcut(key, &a.keyboard_shortcut))
+    }
+
+    /// Execute the currently selected dynamic action
+    pub async fn execute_selected_dynamic_action(&mut self) -> Result<()> {
+        let action = match self.state.selected_action() {
+            Some(a) => a.clone(),
+            None => return Ok(()),
+        };
+
+        if !action.enabled {
+            self.status_message = Some(action.disabled_reason.clone());
+            return Ok(());
+        }
+
+        // Route to appropriate handler based on action ID
+        match action.id.as_str() {
+            // Issue actions
+            "create_issue" => {
+                self.navigate(View::IssueCreate, ViewParams::default());
+            }
+            "delete_issue" => {
+                self.delete_selected_issue().await?;
+            }
+            "move_issue" => {
+                self.status_message = Some("Move issue: Not yet implemented".to_string());
+            }
+            "duplicate_issue" => {
+                self.status_message = Some("Duplicate issue: Not yet implemented".to_string());
+            }
+            "open_vscode" => {
+                self.execute_open_in_vscode().await?;
+            }
+            "set_mode_plan" => {
+                self.state.action_panel_llm_action = LlmAction::Plan;
+                self.status_message = Some("Mode set to Plan".to_string());
+            }
+            "set_mode_implement" => {
+                self.state.action_panel_llm_action = LlmAction::Implement;
+                self.status_message = Some("Mode set to Implement".to_string());
+            }
+
+            // PR actions
+            "create_pr" => {
+                self.navigate(View::PrCreate, ViewParams::default());
+            }
+            "delete_pr" => {
+                self.status_message = Some("Delete PR: Not yet implemented".to_string());
+            }
+
+            // Doc actions
+            "create_doc" => {
+                self.navigate(View::DocCreate, ViewParams::default());
+            }
+            "delete_doc" => {
+                self.status_message = Some("Delete doc: Not yet implemented".to_string());
+            }
+
+            // Status transitions (dynamic, e.g., "status:open", "status:closed")
+            id if id.starts_with("status:") => {
+                let new_status = id.strip_prefix("status:").unwrap_or("");
+                self.update_issue_status(new_status.to_string()).await?;
+            }
+
+            _ => {
+                self.status_message = Some(format!("Unknown action: {}", action.id));
+            }
+        }
+
+        // Refresh actions after execution (state may have changed)
+        self.refresh_current_actions().await;
+
+        Ok(())
+    }
+
     /// Handle keys in Issue Create view
     async fn handle_issue_create_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
@@ -762,36 +911,70 @@ impl App {
 
     /// Handle keys in PRs view
     async fn handle_prs_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check for dynamic action shortcut first (when focused on list)
+        if matches!(self.state.prs_list_focus, PrsListFocus::List) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
+
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => self
-                .state
-                .move_selection_down(self.state.sorted_prs().len()),
-            KeyCode::Char('k') | KeyCode::Up => self.state.move_selection_up(),
-            KeyCode::Enter => {
-                let pr_id = self
-                    .state
-                    .sorted_prs()
-                    .get(self.state.selected_index)
-                    .map(|pr| pr.id.clone());
-                if let Some(id) = pr_id {
-                    self.state.selected_pr_id = Some(id.clone());
-                    self.navigate(
-                        View::PrDetail,
-                        ViewParams {
-                            pr_id: Some(id),
-                            ..Default::default()
-                        },
-                    );
+            // Tab: Switch focus between list and action panel
+            KeyCode::Tab => {
+                self.state.prs_list_focus.toggle();
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.prs_list_focus, PrsListFocus::List) {
+                    self.state.move_selection_down(self.state.sorted_prs().len());
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
                 }
             }
-            KeyCode::Char('n') => self.navigate(View::PrCreate, ViewParams::default()),
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.prs_list_focus, PrsListFocus::List) {
+                    self.state.move_selection_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            KeyCode::Enter => {
+                if matches!(self.state.prs_list_focus, PrsListFocus::ActionPanel) {
+                    self.execute_selected_dynamic_action().await?;
+                } else {
+                    // Open PR detail
+                    let pr_id = self
+                        .state
+                        .sorted_prs()
+                        .get(self.state.selected_index)
+                        .map(|pr| pr.id.clone());
+                    if let Some(id) = pr_id {
+                        self.state.selected_pr_id = Some(id.clone());
+                        self.navigate(
+                            View::PrDetail,
+                            ViewParams {
+                                pr_id: Some(id),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+            }
             KeyCode::Char('s') => self.state.cycle_pr_sort_field(),
             KeyCode::Char('S') => self.state.toggle_pr_sort_direction(),
             KeyCode::Char('a') => {
                 self.state.show_merged_prs = !self.state.show_merged_prs;
                 self.state.reset_selection();
             }
-            KeyCode::Esc | KeyCode::Backspace => self.go_back(),
+            KeyCode::Esc | KeyCode::Backspace => {
+                // Reset focus state when leaving
+                self.state.prs_list_focus = PrsListFocus::List;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
             _ => {}
         }
         Ok(())
@@ -799,7 +982,21 @@ impl App {
 
     /// Handle keys in PR Detail view
     async fn handle_pr_detail_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check for dynamic action shortcut first (when focused on content)
+        if matches!(self.state.pr_detail_focus, PrDetailFocus::Content) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
+
         match key.code {
+            // Tab: Switch focus between content and action panel
+            KeyCode::Tab => {
+                self.state.pr_detail_focus.toggle();
+            }
+            // Edit PR
             KeyCode::Char('e') => {
                 if let Some(pr_id) = &self.state.selected_pr_id {
                     self.navigate(
@@ -811,9 +1008,35 @@ impl App {
                     );
                 }
             }
-            KeyCode::Char('j') | KeyCode::Down => self.state.scroll_down(),
-            KeyCode::Char('k') | KeyCode::Up => self.state.scroll_up(),
-            KeyCode::Esc | KeyCode::Backspace => self.go_back(),
+            // Navigation (j/k/Up/Down)
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.pr_detail_focus, PrDetailFocus::Content) {
+                    self.state.scroll_down();
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.pr_detail_focus, PrDetailFocus::Content) {
+                    self.state.scroll_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            // Execute action (Enter when action panel is focused)
+            KeyCode::Enter => {
+                if matches!(self.state.pr_detail_focus, PrDetailFocus::ActionPanel) {
+                    self.execute_selected_dynamic_action().await?;
+                }
+            }
+            // Go back (also reset focus and action panel index)
+            KeyCode::Esc | KeyCode::Backspace => {
+                self.state.pr_detail_focus = PrDetailFocus::Content;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
             _ => {}
         }
         Ok(())
@@ -910,25 +1133,59 @@ impl App {
 
     /// Handle keys in Docs view
     async fn handle_docs_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.state.move_selection_down(self.state.docs.len())
+        // Check for dynamic action shortcut first (when focused on list)
+        if matches!(self.state.docs_list_focus, DocsListFocus::List) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
             }
-            KeyCode::Char('k') | KeyCode::Up => self.state.move_selection_up(),
-            KeyCode::Enter => {
-                if let Some(doc) = self.state.docs.get(self.state.selected_index) {
-                    self.state.selected_doc_slug = Some(doc.slug.clone());
-                    self.navigate(
-                        View::DocDetail,
-                        ViewParams {
-                            doc_slug: Some(doc.slug.clone()),
-                            ..Default::default()
-                        },
-                    );
+        }
+
+        match key.code {
+            // Tab: Switch focus between list and action panel
+            KeyCode::Tab => {
+                self.state.docs_list_focus.toggle();
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.docs_list_focus, DocsListFocus::List) {
+                    self.state.move_selection_down(self.state.docs.len());
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
                 }
             }
-            KeyCode::Char('n') => self.navigate(View::DocCreate, ViewParams::default()),
-            KeyCode::Esc | KeyCode::Backspace => self.go_back(),
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.docs_list_focus, DocsListFocus::List) {
+                    self.state.move_selection_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            KeyCode::Enter => {
+                if matches!(self.state.docs_list_focus, DocsListFocus::ActionPanel) {
+                    self.execute_selected_dynamic_action().await?;
+                } else {
+                    // Open doc detail
+                    if let Some(doc) = self.state.docs.get(self.state.selected_index) {
+                        self.state.selected_doc_slug = Some(doc.slug.clone());
+                        self.navigate(
+                            View::DocDetail,
+                            ViewParams {
+                                doc_slug: Some(doc.slug.clone()),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+            }
+            KeyCode::Esc | KeyCode::Backspace => {
+                // Reset focus state when leaving
+                self.state.docs_list_focus = DocsListFocus::List;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
             _ => {}
         }
         Ok(())
@@ -936,12 +1193,59 @@ impl App {
 
     /// Handle keys in Doc Detail view
     async fn handle_doc_detail_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check for dynamic action shortcut first (when focused on content)
+        if matches!(self.state.doc_detail_focus, DocDetailFocus::Content) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
+
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => self.state.scroll_down(),
-            KeyCode::Char('k') | KeyCode::Up => self.state.scroll_up(),
-            KeyCode::Char('d') | KeyCode::PageDown => self.state.scroll_down_page(),
-            KeyCode::Char('u') | KeyCode::PageUp => self.state.scroll_up_page(),
-            KeyCode::Esc | KeyCode::Backspace => self.go_back(),
+            // Tab: Switch focus between content and action panel
+            KeyCode::Tab => {
+                self.state.doc_detail_focus.toggle();
+            }
+            // Navigation (j/k/Up/Down)
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.doc_detail_focus, DocDetailFocus::Content) {
+                    self.state.scroll_down();
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.doc_detail_focus, DocDetailFocus::Content) {
+                    self.state.scroll_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            KeyCode::Char('d') | KeyCode::PageDown => {
+                if matches!(self.state.doc_detail_focus, DocDetailFocus::Content) {
+                    self.state.scroll_down_page();
+                }
+            }
+            KeyCode::Char('u') | KeyCode::PageUp => {
+                if matches!(self.state.doc_detail_focus, DocDetailFocus::Content) {
+                    self.state.scroll_up_page();
+                }
+            }
+            // Execute action (Enter when action panel is focused)
+            KeyCode::Enter => {
+                if matches!(self.state.doc_detail_focus, DocDetailFocus::ActionPanel) {
+                    self.execute_selected_dynamic_action().await?;
+                }
+            }
+            // Go back (also reset focus and action panel index)
+            KeyCode::Esc | KeyCode::Backspace => {
+                self.state.doc_detail_focus = DocDetailFocus::Content;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
             _ => {}
         }
         Ok(())

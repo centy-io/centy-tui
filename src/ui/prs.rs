@@ -1,6 +1,7 @@
 //! Pull Request list and detail views
 
 use crate::app::App;
+use crate::state::{PrDetailFocus, PrsListFocus};
 use super::render_scrollable_list;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -12,6 +13,31 @@ use ratatui::{
 
 /// Draw the PRs list
 pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
+    // Split area into content (left) and action panel (right)
+    let h_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(22)])
+        .split(area);
+
+    let list_area = h_chunks[0];
+    let action_area = h_chunks[1];
+
+    // Draw the PRs list content
+    draw_prs_list_content(frame, list_area, app);
+
+    // Draw the action panel
+    let is_focused = matches!(app.state.prs_list_focus, PrsListFocus::ActionPanel);
+    super::render_action_panel(frame, action_area, app, is_focused);
+}
+
+/// Draw the PRs list content (left side)
+fn draw_prs_list_content(frame: &mut Frame, area: Rect, app: &App) {
+    // Border color based on focus
+    let border_color = match app.state.prs_list_focus {
+        PrsListFocus::List => Color::Cyan,
+        PrsListFocus::ActionPanel => Color::DarkGray,
+    };
+
     let sorted_prs = app.state.sorted_prs();
     let project_name = app
         .state
@@ -55,7 +81,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
                 Block::default()
                     .title(format!(" Pull Requests - {} ", project_name))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(Style::default().fg(border_color)),
             );
         frame.render_widget(content, area);
         return;
@@ -145,7 +171,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         Block::default()
             .title(format!(" Pull Requests - {} ", project_name))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
+            .border_style(Style::default().fg(border_color)),
     );
 
     render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
@@ -153,6 +179,31 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Draw PR detail view
 pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
+    // Split area into content (left) and action panel (right)
+    let h_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(22)])
+        .split(area);
+
+    let content_area = h_chunks[0];
+    let action_area = h_chunks[1];
+
+    // Draw content
+    draw_pr_detail_content(frame, content_area, app);
+
+    // Draw action panel
+    let is_focused = matches!(app.state.pr_detail_focus, PrDetailFocus::ActionPanel);
+    super::render_action_panel(frame, action_area, app, is_focused);
+}
+
+/// Draw PR detail content (left side)
+fn draw_pr_detail_content(frame: &mut Frame, area: Rect, app: &App) {
+    // Border color based on focus
+    let border_color = match app.state.pr_detail_focus {
+        PrDetailFocus::Content => Color::Cyan,
+        PrDetailFocus::ActionPanel => Color::DarkGray,
+    };
+
     let pr = app
         .state
         .selected_pr_id
@@ -166,7 +217,7 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
                 Block::default()
                     .title(" Pull Request ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(Style::default().fg(border_color)),
             );
         frame.render_widget(message, area);
         return;
@@ -317,7 +368,7 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
             Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(Style::default().fg(border_color)),
         )
         .wrap(Wrap { trim: false })
         .scroll((app.state.scroll_offset as u16, 0));

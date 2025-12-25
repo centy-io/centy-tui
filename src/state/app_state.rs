@@ -160,6 +160,74 @@ impl IssuesListFocus {
     }
 }
 
+/// Focus state for PRs list view (list vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PrsListFocus {
+    #[default]
+    List,
+    ActionPanel,
+}
+
+impl PrsListFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::List => Self::ActionPanel,
+            Self::ActionPanel => Self::List,
+        };
+    }
+}
+
+/// Focus state for PR detail view (content vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PrDetailFocus {
+    #[default]
+    Content,
+    ActionPanel,
+}
+
+impl PrDetailFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Content => Self::ActionPanel,
+            Self::ActionPanel => Self::Content,
+        };
+    }
+}
+
+/// Focus state for Docs list view (list vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DocsListFocus {
+    #[default]
+    List,
+    ActionPanel,
+}
+
+impl DocsListFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::List => Self::ActionPanel,
+            Self::ActionPanel => Self::List,
+        };
+    }
+}
+
+/// Focus state for Doc detail view (content vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DocDetailFocus {
+    #[default]
+    Content,
+    ActionPanel,
+}
+
+impl DocDetailFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Content => Self::ActionPanel,
+            Self::ActionPanel => Self::Content,
+        };
+    }
+}
+
 /// LLM action type for agent operations (mirrors proto LlmAction)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LlmAction {
@@ -326,6 +394,94 @@ pub struct DaemonInfo {
     pub project_count: u32,
 }
 
+/// Entity type for action requests
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityType {
+    Issue,
+    Pr,
+    Doc,
+}
+
+/// Action category for grouping in UI
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ActionCategory {
+    #[default]
+    Unspecified,
+    Crud,     // Create, Delete, Duplicate, Move
+    Mode,     // Plan, Implement (LLM actions)
+    Status,   // Status/state changes
+    External, // Open in VSCode, external tools
+}
+
+impl ActionCategory {
+    pub fn from_proto(value: i32) -> Self {
+        match value {
+            1 => Self::Crud,
+            2 => Self::Mode,
+            3 => Self::Status,
+            4 => Self::External,
+            _ => Self::Unspecified,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "Other",
+            Self::Crud => "Actions",
+            Self::Mode => "Mode",
+            Self::Status => "Status",
+            Self::External => "External",
+        }
+    }
+}
+
+/// An action that can be performed on an entity
+#[derive(Debug, Clone)]
+pub struct EntityAction {
+    pub id: String,
+    pub label: String,
+    pub category: ActionCategory,
+    pub enabled: bool,
+    pub disabled_reason: String,
+    pub destructive: bool,
+    pub keyboard_shortcut: String,
+}
+
+/// Response containing available actions
+#[derive(Debug, Clone, Default)]
+pub struct EntityActionsResponse {
+    pub actions: Vec<EntityAction>,
+}
+
+impl EntityActionsResponse {
+    /// Get actions grouped by category
+    pub fn grouped_actions(&self) -> Vec<(ActionCategory, Vec<&EntityAction>)> {
+        let mut groups: Vec<(ActionCategory, Vec<&EntityAction>)> = Vec::new();
+
+        // Collect unique categories in order
+        let categories = [
+            ActionCategory::Crud,
+            ActionCategory::Mode,
+            ActionCategory::Status,
+            ActionCategory::External,
+            ActionCategory::Unspecified,
+        ];
+
+        for category in categories {
+            let actions: Vec<_> = self
+                .actions
+                .iter()
+                .filter(|a| a.category == category)
+                .collect();
+            if !actions.is_empty() {
+                groups.push((category, actions));
+            }
+        }
+
+        groups
+    }
+}
+
 /// Main application state
 #[derive(Default)]
 pub struct AppState {
@@ -371,11 +527,23 @@ pub struct AppState {
     // Issue detail action panel state
     pub issue_detail_focus: IssueDetailFocus,
     pub action_panel_llm_action: LlmAction,
-    pub action_panel_index: usize, // Selected item in action panel (0=VSCode, 1=Plan, 2=Impl, 3+=states)
 
     // Issues list action panel state
     pub issues_list_focus: IssuesListFocus,
-    pub issues_list_action_index: usize, // 0=Create, 1=Move, 2=Delete
+
+    // PRs action panel state
+    pub prs_list_focus: PrsListFocus,
+    pub pr_detail_focus: PrDetailFocus,
+
+    // Docs action panel state
+    pub docs_list_focus: DocsListFocus,
+    pub doc_detail_focus: DocDetailFocus,
+
+    // Dynamic actions state (from GetEntityActions)
+    pub current_actions: EntityActionsResponse,
+    pub actions_loading: bool,
+    pub actions_error: Option<String>,
+    pub action_panel_selected_index: usize,
 
     // Double-click detection for project grid
     pub last_click_time: Option<Instant>,
@@ -724,5 +892,40 @@ impl AppState {
         self.form_status = pr.metadata.status.clone();
         self.form_source_branch = pr.metadata.source_branch.clone();
         self.form_target_branch = pr.metadata.target_branch.clone();
+    }
+
+    // =========== Action Panel Navigation ===========
+
+    /// Get currently selected action
+    pub fn selected_action(&self) -> Option<&EntityAction> {
+        self.current_actions.actions.get(self.action_panel_selected_index)
+    }
+
+    /// Navigate action panel up
+    pub fn action_panel_up(&mut self) {
+        if self.action_panel_selected_index > 0 {
+            self.action_panel_selected_index -= 1;
+        }
+    }
+
+    /// Navigate action panel down
+    pub fn action_panel_down(&mut self) {
+        let total = self.current_actions.actions.len();
+        if total > 0 && self.action_panel_selected_index < total - 1 {
+            self.action_panel_selected_index += 1;
+        }
+    }
+
+    /// Check if action panel is focused for current view
+    pub fn is_action_panel_focused(&self) -> bool {
+        match self.current_view {
+            View::Issues => matches!(self.issues_list_focus, IssuesListFocus::ActionPanel),
+            View::IssueDetail => matches!(self.issue_detail_focus, IssueDetailFocus::ActionPanel),
+            View::Prs => matches!(self.prs_list_focus, PrsListFocus::ActionPanel),
+            View::PrDetail => matches!(self.pr_detail_focus, PrDetailFocus::ActionPanel),
+            View::Docs => matches!(self.docs_list_focus, DocsListFocus::ActionPanel),
+            View::DocDetail => matches!(self.doc_detail_focus, DocDetailFocus::ActionPanel),
+            _ => false,
+        }
     }
 }
