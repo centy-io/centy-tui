@@ -156,8 +156,8 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App) {
         ));
     }
 
-    // Quit hint on the right
-    let quit_hint = " ^C:quit ";
+    // Quit hint on the right (double Ctrl+C to quit)
+    let quit_hint = " ^C^C:quit ";
 
     let status = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
 
@@ -182,13 +182,13 @@ fn get_view_hints(view: &View) -> &'static str {
         View::Projects => "h/j/k/l:nav  Enter:select  f:fav  a:archive  x:untrack  n:new",
         View::Issues => "j/k:nav  Tab:panel  Enter:view/run  n:new  s/S:sort  a:all  y:copy",
         View::IssueDetail => "Tab:panel  e:edit  p/i:mode  Enter:run  j/k:scroll  Esc:back",
-        View::IssueCreate | View::IssueEdit => "Tab:next  ^S:save  Esc:cancel",
+        View::IssueCreate | View::IssueEdit => "Tab:next  ^W:save  Esc:cancel",
         View::Prs => "j/k:nav  Enter:view  n:new  s/S:sort  a:all",
         View::PrDetail => "e:edit  j/k:scroll  Esc:back",
-        View::PrCreate | View::PrEdit => "Tab:next  ^S:save  Esc:cancel",
+        View::PrCreate | View::PrEdit => "Tab:next  ^W:save  Esc:cancel",
         View::Docs => "j/k:nav  Enter:view  n:new  Esc:back",
         View::DocDetail => "j/k:scroll  d/u:page  Esc:back",
-        View::DocCreate => "Tab:next  ^S:save  Esc:cancel",
+        View::DocCreate => "Tab:next  ^W:save  Esc:cancel",
         View::Config => "j/k:scroll  Esc:back",
     }
 }

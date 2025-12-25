@@ -132,7 +132,7 @@ pub fn draw_issue_create(frame: &mut Frame, area: Rect, app: &App) {
     let help = Paragraph::new(Line::from(vec![
         Span::styled("Tab", Style::default().fg(Color::Cyan)),
         Span::raw(": next field  "),
-        Span::styled("Ctrl+S", Style::default().fg(Color::Cyan)),
+        Span::styled("^W", Style::default().fg(Color::Cyan)),
         Span::raw(": save  "),
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::raw(": cancel"),
@@ -220,7 +220,7 @@ pub fn draw_issue_edit(frame: &mut Frame, area: Rect, app: &App) {
     let help = Paragraph::new(Line::from(vec![
         Span::styled("Tab", Style::default().fg(Color::Cyan)),
         Span::raw(": next field  "),
-        Span::styled("Ctrl+S", Style::default().fg(Color::Cyan)),
+        Span::styled("^W", Style::default().fg(Color::Cyan)),
         Span::raw(": save  "),
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::raw(": cancel"),
@@ -306,7 +306,7 @@ pub fn draw_pr_create(frame: &mut Frame, area: Rect, app: &App) {
     let help = Paragraph::new(Line::from(vec![
         Span::styled("Tab", Style::default().fg(Color::Cyan)),
         Span::raw(": next  "),
-        Span::styled("Ctrl+S", Style::default().fg(Color::Cyan)),
+        Span::styled("^W", Style::default().fg(Color::Cyan)),
         Span::raw(": save  "),
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::raw(": cancel"),
@@ -403,7 +403,7 @@ pub fn draw_pr_edit(frame: &mut Frame, area: Rect, app: &App) {
     let help = Paragraph::new(Line::from(vec![
         Span::styled("Tab", Style::default().fg(Color::Cyan)),
         Span::raw(": next  "),
-        Span::styled("Ctrl+S", Style::default().fg(Color::Cyan)),
+        Span::styled("^W", Style::default().fg(Color::Cyan)),
         Span::raw(": save  "),
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::raw(": cancel"),
@@ -461,7 +461,7 @@ pub fn draw_doc_create(frame: &mut Frame, area: Rect, app: &App) {
     let help = Paragraph::new(Line::from(vec![
         Span::styled("Tab", Style::default().fg(Color::Cyan)),
         Span::raw(": next field  "),
-        Span::styled("Ctrl+S", Style::default().fg(Color::Cyan)),
+        Span::styled("^W", Style::default().fg(Color::Cyan)),
         Span::raw(": save  "),
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::raw(": cancel"),

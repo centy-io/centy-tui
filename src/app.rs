@@ -28,6 +28,8 @@ pub struct App {
     pub terminal_size: Option<(u16, u16)>,
     /// Screen buffer for text selection
     pub screen_buffer: ScreenBuffer,
+    /// Timestamp of last Ctrl+C press for double-tap quit
+    pub last_ctrl_c: Option<Instant>,
 }
 
 impl App {
@@ -59,6 +61,7 @@ impl App {
             splash_state: Some(SplashState::new(LogoStyle::default())),
             terminal_size: None,
             screen_buffer: ScreenBuffer::default(),
+            last_ctrl_c: None,
         })
     }
 
@@ -664,7 +667,7 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
                         .daemon
@@ -715,7 +718,7 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
                 if let (Some(path), Some(issue_id)) = (
                     &self.state.selected_project_path,
                     &self.state.selected_issue_id,
@@ -826,7 +829,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
                         .daemon
@@ -871,7 +874,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
                 if let (Some(path), Some(pr_id)) = (
                     &self.state.selected_project_path,
                     &self.state.selected_pr_id,
@@ -954,7 +957,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
                 if let Some(path) = &self.state.selected_project_path {
                     let slug = if self.state.form_slug.is_empty() {
                         None
