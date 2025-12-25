@@ -1013,6 +1013,8 @@ impl App {
                     } else {
                         self.status_message = Some("Failed to create issue".to_string());
                     }
+                } else {
+                    self.status_message = Some("No project selected".to_string());
                 }
             }
             KeyCode::Esc => {
@@ -1040,29 +1042,37 @@ impl App {
             KeyCode::BackTab => self.state.prev_form_field(),
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
             {
-                if let (Some(path), Some(issue_id)) = (
+                match (
                     &self.state.selected_project_path,
                     &self.state.selected_issue_id,
                 ) {
-                    let result = self
-                        .daemon
-                        .update_issue(
-                            path,
-                            issue_id,
-                            &self.state.form_title,
-                            &self.state.form_description,
-                            self.state.form_priority,
-                            &self.state.form_status,
-                        )
-                        .await;
-                    if result.is_ok() {
-                        if let Ok(issues) = self.daemon.list_issues(path).await {
-                            self.state.issues = issues;
+                    (Some(path), Some(issue_id)) => {
+                        let result = self
+                            .daemon
+                            .update_issue(
+                                path,
+                                issue_id,
+                                &self.state.form_title,
+                                &self.state.form_description,
+                                self.state.form_priority,
+                                &self.state.form_status,
+                            )
+                            .await;
+                        if result.is_ok() {
+                            if let Ok(issues) = self.daemon.list_issues(path).await {
+                                self.state.issues = issues;
+                            }
+                            self.state.clear_form();
+                            self.go_back();
+                        } else {
+                            self.status_message = Some("Failed to update issue".to_string());
                         }
-                        self.state.clear_form();
-                        self.go_back();
-                    } else {
-                        self.status_message = Some("Failed to update issue".to_string());
+                    }
+                    (None, _) => {
+                        self.status_message = Some("No project selected".to_string());
+                    }
+                    (_, None) => {
+                        self.status_message = Some("No issue selected".to_string());
                     }
                 }
             }
@@ -1250,7 +1260,11 @@ impl App {
                                 ..Default::default()
                             },
                         );
+                    } else {
+                        self.status_message = Some("Failed to create PR".to_string());
                     }
+                } else {
+                    self.status_message = Some("No project selected".to_string());
                 }
             }
             KeyCode::Tab => self.state.next_form_field(),
@@ -1273,28 +1287,38 @@ impl App {
             }
             KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
             {
-                if let (Some(path), Some(pr_id)) = (
+                match (
                     &self.state.selected_project_path,
                     &self.state.selected_pr_id,
                 ) {
-                    let result = self
-                        .daemon
-                        .update_pr(
-                            path,
-                            pr_id,
-                            &self.state.form_title,
-                            &self.state.form_description,
-                            &self.state.form_source_branch,
-                            &self.state.form_target_branch,
-                            &self.state.form_status,
-                        )
-                        .await;
-                    if result.is_ok() {
-                        if let Ok(prs) = self.daemon.list_prs(path).await {
-                            self.state.prs = prs;
+                    (Some(path), Some(pr_id)) => {
+                        let result = self
+                            .daemon
+                            .update_pr(
+                                path,
+                                pr_id,
+                                &self.state.form_title,
+                                &self.state.form_description,
+                                &self.state.form_source_branch,
+                                &self.state.form_target_branch,
+                                &self.state.form_status,
+                            )
+                            .await;
+                        if result.is_ok() {
+                            if let Ok(prs) = self.daemon.list_prs(path).await {
+                                self.state.prs = prs;
+                            }
+                            self.state.clear_form();
+                            self.go_back();
+                        } else {
+                            self.status_message = Some("Failed to update PR".to_string());
                         }
-                        self.state.clear_form();
-                        self.go_back();
+                    }
+                    (None, _) => {
+                        self.status_message = Some("No project selected".to_string());
+                    }
+                    (_, None) => {
+                        self.status_message = Some("No PR selected".to_string());
                     }
                 }
             }
@@ -1465,7 +1489,11 @@ impl App {
                                 ..Default::default()
                             },
                         );
+                    } else {
+                        self.status_message = Some("Failed to create doc".to_string());
                     }
+                } else {
+                    self.status_message = Some("No project selected".to_string());
                 }
             }
             KeyCode::Tab => self.state.next_form_field(),
