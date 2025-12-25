@@ -50,6 +50,10 @@ simple-easing = "1.0"
 [build-dependencies]
 tonic-build = "0.12"
 
+[dev-dependencies]
+# Git hooks for pre-commit validation
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

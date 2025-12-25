@@ -1,0 +1,36 @@
+#!/bin/sh
+# Pre-commit hook for centy-tui
+# Validates code quality before allowing commits
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Check if cspell is available
+if command -v cspell >/dev/null 2>&1; then
+    echo "→ Running spellcheck..."
+    cspell "**/*" --no-progress
+elif command -v bunx >/dev/null 2>&1; then
+    echo "→ Running spellcheck (via bunx)..."
+    bunx cspell "**/*" --no-progress
+elif command -v npx >/dev/null 2>&1; then
+    echo "→ Running spellcheck (via npx)..."
+    npx cspell "**/*" --no-progress
+else
+    echo "⚠ cspell not found, skipping spellcheck"
+    echo "  Install with: npm install -g cspell"
+fi
+
+# Run cargo fmt check
+echo "→ Checking formatting..."
+cargo fmt -- --check
+
+# Run clippy
+echo "→ Running clippy..."
+cargo clippy -- -D warnings
+
+# Run tests
+echo "→ Running tests..."
+cargo test --quiet
+
+echo "✓ All pre-commit checks passed!"
