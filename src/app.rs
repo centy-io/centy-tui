@@ -864,62 +864,54 @@ impl App {
         // We determine the entity type from the current view
         match action.id.as_str() {
             // Create action - contextual based on current view
-            "create" => {
-                match self.state.current_view {
-                    View::Issues | View::IssueDetail => {
-                        self.navigate(View::IssueCreate, ViewParams::default());
-                    }
-                    View::Prs | View::PrDetail => {
-                        self.navigate(View::PrCreate, ViewParams::default());
-                    }
-                    View::Docs | View::DocDetail => {
-                        self.navigate(View::DocCreate, ViewParams::default());
-                    }
-                    _ => {}
+            "create" => match self.state.current_view {
+                View::Issues | View::IssueDetail => {
+                    self.navigate(View::IssueCreate, ViewParams::default());
                 }
-            }
+                View::Prs | View::PrDetail => {
+                    self.navigate(View::PrCreate, ViewParams::default());
+                }
+                View::Docs | View::DocDetail => {
+                    self.navigate(View::DocCreate, ViewParams::default());
+                }
+                _ => {}
+            },
 
             // Delete action - contextual based on current view
-            "delete" => {
-                match self.state.current_view {
-                    View::Issues | View::IssueDetail => {
-                        self.delete_selected_issue().await?;
-                    }
-                    View::Prs | View::PrDetail => {
-                        self.status_message = Some("Delete PR: Not yet implemented".to_string());
-                    }
-                    View::Docs | View::DocDetail => {
-                        self.status_message = Some("Delete doc: Not yet implemented".to_string());
-                    }
-                    _ => {}
+            "delete" => match self.state.current_view {
+                View::Issues | View::IssueDetail => {
+                    self.delete_selected_issue().await?;
                 }
-            }
+                View::Prs | View::PrDetail => {
+                    self.status_message = Some("Delete PR: Not yet implemented".to_string());
+                }
+                View::Docs | View::DocDetail => {
+                    self.status_message = Some("Delete doc: Not yet implemented".to_string());
+                }
+                _ => {}
+            },
 
             // Duplicate action - contextual based on current view
-            "duplicate" => {
-                match self.state.current_view {
-                    View::Issues | View::IssueDetail => {
-                        self.status_message = Some("Duplicate issue: Not yet implemented".to_string());
-                    }
-                    View::Docs | View::DocDetail => {
-                        self.status_message = Some("Duplicate doc: Not yet implemented".to_string());
-                    }
-                    _ => {}
+            "duplicate" => match self.state.current_view {
+                View::Issues | View::IssueDetail => {
+                    self.status_message = Some("Duplicate issue: Not yet implemented".to_string());
                 }
-            }
+                View::Docs | View::DocDetail => {
+                    self.status_message = Some("Duplicate doc: Not yet implemented".to_string());
+                }
+                _ => {}
+            },
 
             // Move action - contextual based on current view
-            "move" => {
-                match self.state.current_view {
-                    View::Issues | View::IssueDetail => {
-                        self.status_message = Some("Move issue: Not yet implemented".to_string());
-                    }
-                    View::Docs | View::DocDetail => {
-                        self.status_message = Some("Move doc: Not yet implemented".to_string());
-                    }
-                    _ => {}
+            "move" => match self.state.current_view {
+                View::Issues | View::IssueDetail => {
+                    self.status_message = Some("Move issue: Not yet implemented".to_string());
                 }
-            }
+                View::Docs | View::DocDetail => {
+                    self.status_message = Some("Move doc: Not yet implemented".to_string());
+                }
+                _ => {}
+            },
 
             // Mode actions (Issue-specific)
             "mode:plan" => {
@@ -966,7 +958,10 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char('w')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
                         .daemon
@@ -1017,7 +1012,10 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char('w')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 if let (Some(path), Some(issue_id)) = (
                     &self.state.selected_project_path,
                     &self.state.selected_issue_id,
@@ -1080,7 +1078,8 @@ impl App {
             }
             KeyCode::Char('j') | KeyCode::Down => {
                 if matches!(self.state.prs_list_focus, PrsListFocus::List) {
-                    self.state.move_selection_down(self.state.sorted_prs().len());
+                    self.state
+                        .move_selection_down(self.state.sorted_prs().len());
                 } else {
                     // Navigate down in action panel
                     self.state.action_panel_down();
@@ -1202,7 +1201,10 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char('w')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
                         .daemon
@@ -1247,7 +1249,10 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char('w')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 if let (Some(path), Some(pr_id)) = (
                     &self.state.selected_project_path,
                     &self.state.selected_pr_id,
@@ -1411,7 +1416,10 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char('w')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 if let Some(path) = &self.state.selected_project_path {
                     let slug = if self.state.form_slug.is_empty() {
                         None
@@ -1695,11 +1703,8 @@ impl App {
                                     }
                                 }
                                 View::Docs => {
-                                    let doc_slug = self
-                                        .state
-                                        .docs
-                                        .get(clicked_index)
-                                        .map(|d| d.slug.clone());
+                                    let doc_slug =
+                                        self.state.docs.get(clicked_index).map(|d| d.slug.clone());
                                     if let Some(slug) = doc_slug {
                                         self.state.selected_doc_slug = Some(slug.clone());
                                         self.navigate(
@@ -1931,9 +1936,15 @@ impl App {
 
         let new_pos = match key.code {
             KeyCode::Left => ScreenPos::new(current.col.saturating_sub(1), current.row),
-            KeyCode::Right => ScreenPos::new((current.col + 1).min(max_col.saturating_sub(1)), current.row),
+            KeyCode::Right => ScreenPos::new(
+                (current.col + 1).min(max_col.saturating_sub(1)),
+                current.row,
+            ),
             KeyCode::Up => ScreenPos::new(current.col, current.row.saturating_sub(1)),
-            KeyCode::Down => ScreenPos::new(current.col, (current.row + 1).min(max_row.saturating_sub(1))),
+            KeyCode::Down => ScreenPos::new(
+                current.col,
+                (current.row + 1).min(max_row.saturating_sub(1)),
+            ),
             _ => current,
         };
 
