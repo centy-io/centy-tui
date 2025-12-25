@@ -582,6 +582,26 @@ pub struct PendingWorktreeAction {
     pub selected_option: WorktreeDialogOption,
 }
 
+/// Entity type for move operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveEntityType {
+    Issue,
+    Doc,
+}
+
+/// Pending move action state (project picker + confirmation)
+#[derive(Debug, Clone)]
+pub struct PendingMoveAction {
+    pub entity_type: MoveEntityType,
+    pub source_project_path: String,
+    pub entity_id: String,
+    pub entity_display: String,
+    pub selected_project_index: usize,
+    pub search_filter: String,
+    pub show_confirmation: bool,
+    pub target_project_path: Option<String>,
+}
+
 /// Main application state
 #[derive(Default)]
 pub struct AppState {
@@ -627,6 +647,8 @@ pub struct AppState {
     pub confirm_action: Option<String>,
     /// Pending worktree action when a workspace already exists
     pub pending_worktree_action: Option<PendingWorktreeAction>,
+    /// Pending move action when moving an issue or doc
+    pub pending_move_action: Option<PendingMoveAction>,
     /// Queue of error messages to display one at a time
     pub error_queue: VecDeque<String>,
 

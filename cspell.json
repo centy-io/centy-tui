@@ -35,7 +35,8 @@
     "clippy",
     "rustfmt",
     "codegen",
-    "figlet"
+    "figlet",
+    "rsplit"
   ],
   "ignorePaths": [
     ".centy-manifest.json",

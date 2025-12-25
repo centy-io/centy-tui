@@ -3,9 +3,9 @@
 use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
-    IssuesListFocus, LlmAction, LogoStyle, PendingWorktreeAction, PrDetailFocus, PressedButton,
-    PrsListFocus, ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams,
-    WorktreeDialogOption,
+    IssuesListFocus, LlmAction, LogoStyle, MoveEntityType, PendingMoveAction,
+    PendingWorktreeAction, PrDetailFocus, PressedButton, Project, PrsListFocus, ScreenBuffer,
+    ScreenPos, SplashState, UiArea, View, ViewParams, WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -252,6 +252,12 @@ impl App {
         // Handle worktree dialog (modal)
         if self.state.pending_worktree_action.is_some() {
             self.handle_worktree_dialog_key(key).await?;
+            return Ok(());
+        }
+
+        // Handle move dialog (modal)
+        if self.state.pending_move_action.is_some() {
+            self.handle_move_dialog_key(key).await?;
             return Ok(());
         }
 
@@ -1108,10 +1114,10 @@ impl App {
             // Move action - contextual based on current view
             "move" => match self.state.current_view {
                 View::Issues | View::IssueDetail => {
-                    self.push_error("Move issue: Not yet implemented");
+                    self.start_move_issue();
                 }
                 View::Docs | View::DocDetail => {
-                    self.push_error("Move doc: Not yet implemented");
+                    self.start_move_doc();
                 }
                 _ => {}
             },
@@ -2026,6 +2032,323 @@ impl App {
         Ok(())
     }
 
+    /// Handle keys for the move dialog
+    async fn handle_move_dialog_key(&mut self, key: KeyEvent) -> Result<()> {
+        let is_confirmation = self
+            .state
+            .pending_move_action
+            .as_ref()
+            .map(|a| a.show_confirmation)
+            .unwrap_or(false);
+
+        if is_confirmation {
+            // Confirmation dialog: Enter to confirm, Esc to go back
+            match key.code {
+                KeyCode::Esc => {
+                    // Go back to picker
+                    if let Some(ref mut action) = self.state.pending_move_action {
+                        action.show_confirmation = false;
+                        action.target_project_path = None;
+                    }
+                }
+                KeyCode::Enter => {
+                    // Execute the move
+                    self.execute_move().await?;
+                }
+                _ => {}
+            }
+        } else {
+            // Project picker dialog
+            match key.code {
+                KeyCode::Esc => {
+                    self.state.pending_move_action = None;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if let Some(ref mut action) = self.state.pending_move_action {
+                        if action.selected_project_index > 0 {
+                            action.selected_project_index -= 1;
+                        }
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let filtered_count = self.get_filtered_move_targets().len();
+                    if let Some(ref mut action) = self.state.pending_move_action {
+                        if action.selected_project_index < filtered_count.saturating_sub(1) {
+                            action.selected_project_index += 1;
+                        }
+                    }
+                }
+                KeyCode::Char(c) => {
+                    // Add to search filter
+                    if let Some(ref mut action) = self.state.pending_move_action {
+                        action.search_filter.push(c);
+                        action.selected_project_index = 0; // Reset selection on filter change
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let Some(ref mut action) = self.state.pending_move_action {
+                        action.search_filter.pop();
+                        action.selected_project_index = 0;
+                    }
+                }
+                KeyCode::Enter => {
+                    // Select target and show confirmation
+                    // Get the target path before mutating
+                    let target_path = {
+                        let targets = self.get_filtered_move_targets();
+                        let idx = self
+                            .state
+                            .pending_move_action
+                            .as_ref()
+                            .map(|a| a.selected_project_index)
+                            .unwrap_or(0);
+                        targets.get(idx).map(|p| p.path.clone())
+                    };
+                    if let Some(path) = target_path {
+                        if let Some(ref mut action) = self.state.pending_move_action {
+                            action.target_project_path = Some(path);
+                            action.show_confirmation = true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Get filtered list of valid move targets (excludes current project)
+    fn get_filtered_move_targets(&self) -> Vec<&Project> {
+        let current_path = self
+            .state
+            .pending_move_action
+            .as_ref()
+            .map(|a| &a.source_project_path);
+
+        let search_filter = self
+            .state
+            .pending_move_action
+            .as_ref()
+            .map(|a| a.search_filter.to_lowercase())
+            .unwrap_or_default();
+
+        self.state
+            .projects
+            .iter()
+            .filter(|p| {
+                p.initialized
+                    && Some(&p.path) != current_path
+                    && (search_filter.is_empty()
+                        || p.display_name().to_lowercase().contains(&search_filter))
+            })
+            .collect()
+    }
+
+    /// Execute the pending move operation
+    async fn execute_move(&mut self) -> Result<()> {
+        let action = match self.state.pending_move_action.take() {
+            Some(a) => a,
+            None => return Ok(()),
+        };
+
+        let target_path = match action.target_project_path {
+            Some(p) => p,
+            None => {
+                self.push_error("No target project selected");
+                return Ok(());
+            }
+        };
+
+        match action.entity_type {
+            MoveEntityType::Issue => {
+                match self
+                    .daemon
+                    .move_issue(&action.source_project_path, &action.entity_id, &target_path)
+                    .await
+                {
+                    Ok((_moved_issue, old_num)) => {
+                        // Refresh issues list
+                        if let Ok(issues) =
+                            self.daemon.list_issues(&action.source_project_path).await
+                        {
+                            self.state.issues = issues;
+                            // Adjust selection if needed
+                            let max = self.state.sorted_issues().len();
+                            if self.state.selected_index >= max && max > 0 {
+                                self.state.selected_index = max - 1;
+                            }
+                        }
+                        let target_name = target_path.rsplit('/').next().unwrap_or(&target_path);
+                        self.copy_message =
+                            Some(format!("Moved issue #{} to {}", old_num, target_name));
+                        // Navigate back to issues list
+                        self.navigate(View::Issues, ViewParams::default());
+                    }
+                    Err(e) => {
+                        self.push_error(format!("Failed to move issue: {}", e));
+                    }
+                }
+            }
+            MoveEntityType::Doc => {
+                match self
+                    .daemon
+                    .move_doc(
+                        &action.source_project_path,
+                        &action.entity_id,
+                        &target_path,
+                        None,
+                    )
+                    .await
+                {
+                    Ok((_moved_doc, old_slug)) => {
+                        // Refresh docs list
+                        if let Ok(docs) = self.daemon.list_docs(&action.source_project_path).await {
+                            self.state.docs = docs;
+                            // Adjust selection if needed
+                            let max = self.state.docs.len();
+                            if self.state.selected_index >= max && max > 0 {
+                                self.state.selected_index = max - 1;
+                            }
+                        }
+                        let target_name = target_path.rsplit('/').next().unwrap_or(&target_path);
+                        self.copy_message =
+                            Some(format!("Moved doc '{}' to {}", old_slug, target_name));
+                        // Navigate back to docs list
+                        self.navigate(View::Docs, ViewParams::default());
+                    }
+                    Err(e) => {
+                        self.push_error(format!("Failed to move doc: {}", e));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Start the move flow for an issue
+    fn start_move_issue(&mut self) {
+        let project_path = match &self.state.selected_project_path {
+            Some(p) => p.clone(),
+            None => {
+                self.push_error("No project selected");
+                return;
+            }
+        };
+
+        // Check if there are other projects to move to
+        let target_count = self
+            .state
+            .projects
+            .iter()
+            .filter(|p| p.initialized && p.path != project_path)
+            .count();
+
+        if target_count == 0 {
+            self.push_error("No other projects to move to");
+            return;
+        }
+
+        // Get issue from current selection context
+        let (issue_id, display) = if let Some(id) = &self.state.selected_issue_id {
+            let issue = self.state.issues.iter().find(|i| &i.id == id);
+            match issue {
+                Some(i) => (
+                    i.id.clone(),
+                    format!("#{} {}", i.display_number, truncate_str(&i.title, 30)),
+                ),
+                None => {
+                    self.push_error("Issue not found");
+                    return;
+                }
+            }
+        } else {
+            // From list view
+            let sorted = self.state.sorted_issues();
+            match sorted.get(self.state.selected_index) {
+                Some(i) => (
+                    i.id.clone(),
+                    format!("#{} {}", i.display_number, truncate_str(&i.title, 30)),
+                ),
+                None => {
+                    self.push_error("No issue selected");
+                    return;
+                }
+            }
+        };
+
+        self.state.pending_move_action = Some(PendingMoveAction {
+            entity_type: MoveEntityType::Issue,
+            source_project_path: project_path,
+            entity_id: issue_id,
+            entity_display: display,
+            selected_project_index: 0,
+            search_filter: String::new(),
+            show_confirmation: false,
+            target_project_path: None,
+        });
+    }
+
+    /// Start the move flow for a doc
+    fn start_move_doc(&mut self) {
+        let project_path = match &self.state.selected_project_path {
+            Some(p) => p.clone(),
+            None => {
+                self.push_error("No project selected");
+                return;
+            }
+        };
+
+        // Check if there are other projects to move to
+        let target_count = self
+            .state
+            .projects
+            .iter()
+            .filter(|p| p.initialized && p.path != project_path)
+            .count();
+
+        if target_count == 0 {
+            self.push_error("No other projects to move to");
+            return;
+        }
+
+        let (slug, display) = if let Some(s) = &self.state.selected_doc_slug {
+            let doc = self.state.docs.iter().find(|d| &d.slug == s);
+            match doc {
+                Some(d) => (
+                    d.slug.clone(),
+                    format!("{} ({})", truncate_str(&d.title, 25), d.slug),
+                ),
+                None => {
+                    self.push_error("Doc not found");
+                    return;
+                }
+            }
+        } else {
+            match self.state.docs.get(self.state.selected_index) {
+                Some(d) => (
+                    d.slug.clone(),
+                    format!("{} ({})", truncate_str(&d.title, 25), d.slug),
+                ),
+                None => {
+                    self.push_error("No doc selected");
+                    return;
+                }
+            }
+        };
+
+        self.state.pending_move_action = Some(PendingMoveAction {
+            entity_type: MoveEntityType::Doc,
+            source_project_path: project_path,
+            entity_id: slug,
+            entity_display: display,
+            selected_project_index: 0,
+            search_filter: String::new(),
+            show_confirmation: false,
+            target_project_path: None,
+        });
+    }
+
     /// Open VS Code at a specific path
     async fn open_vscode_at_path(&mut self, workspace_path: &str) {
         // Use the 'code' command to open VS Code at the workspace path
@@ -2768,6 +3091,15 @@ impl App {
             self.state.selection.clear();
         }
         Ok(())
+    }
+}
+
+/// Truncate a string to a maximum length with ellipsis
+fn truncate_str(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
     }
 }
 

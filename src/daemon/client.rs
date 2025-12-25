@@ -491,6 +491,95 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Move an issue to a different project
+    pub async fn move_issue(
+        &mut self,
+        source_project_path: &str,
+        issue_id: &str,
+        target_project_path: &str,
+    ) -> Result<(Issue, u32)> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::MoveIssueRequest {
+            source_project_path: source_project_path.to_string(),
+            issue_id: issue_id.to_string(),
+            target_project_path: target_project_path.to_string(),
+        });
+
+        let response = client
+            .move_issue(request)
+            .await
+            .map_err(|e| anyhow!("Failed to move issue: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("{}", inner.error));
+        }
+
+        let proto_issue = inner.issue.unwrap_or_default();
+        let metadata = proto_issue.metadata.unwrap_or_default();
+        let issue = Issue {
+            id: proto_issue.id,
+            display_number: proto_issue.display_number,
+            title: proto_issue.title,
+            description: proto_issue.description,
+            metadata: IssueMetadata {
+                status: metadata.status,
+                priority: metadata.priority as u32,
+                priority_label: if metadata.priority_label.is_empty() {
+                    None
+                } else {
+                    Some(metadata.priority_label)
+                },
+                created_at: parse_timestamp(&metadata.created_at),
+                updated_at: parse_timestamp(&metadata.updated_at),
+                custom_fields: metadata.custom_fields,
+            },
+        };
+
+        Ok((issue, inner.old_display_number))
+    }
+
+    /// Move a doc to a different project
+    pub async fn move_doc(
+        &mut self,
+        source_project_path: &str,
+        slug: &str,
+        target_project_path: &str,
+        new_slug: Option<&str>,
+    ) -> Result<(Doc, String)> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::MoveDocRequest {
+            source_project_path: source_project_path.to_string(),
+            slug: slug.to_string(),
+            target_project_path: target_project_path.to_string(),
+            new_slug: new_slug.unwrap_or("").to_string(),
+        });
+
+        let response = client
+            .move_doc(request)
+            .await
+            .map_err(|e| anyhow!("Failed to move doc: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("{}", inner.error));
+        }
+
+        let proto_doc = inner.doc.unwrap_or_default();
+        let metadata = proto_doc.metadata.unwrap_or_default();
+        let doc = Doc {
+            slug: proto_doc.slug,
+            title: proto_doc.title,
+            content: proto_doc.content,
+            created_at: parse_timestamp(&metadata.created_at),
+            updated_at: parse_timestamp(&metadata.updated_at),
+        };
+
+        Ok((doc, inner.old_slug))
+    }
+
     /// Create a new PR
     pub async fn create_pr(
         &mut self,
@@ -943,6 +1032,32 @@ impl DaemonClientTrait for DaemonClient {
 
     async fn delete_issue(&mut self, project_path: &str, issue_id: &str) -> Result<()> {
         DaemonClient::delete_issue(self, project_path, issue_id).await
+    }
+
+    async fn move_issue(
+        &mut self,
+        source_project_path: &str,
+        issue_id: &str,
+        target_project_path: &str,
+    ) -> Result<(Issue, u32)> {
+        DaemonClient::move_issue(self, source_project_path, issue_id, target_project_path).await
+    }
+
+    async fn move_doc(
+        &mut self,
+        source_project_path: &str,
+        slug: &str,
+        target_project_path: &str,
+        new_slug: Option<String>,
+    ) -> Result<(Doc, String)> {
+        DaemonClient::move_doc(
+            self,
+            source_project_path,
+            slug,
+            target_project_path,
+            new_slug.as_deref(),
+        )
+        .await
     }
 
     async fn create_pr(

@@ -67,6 +67,23 @@ pub trait DaemonClientTrait: Send + Sync {
     /// Delete an issue
     async fn delete_issue(&mut self, project_path: &str, issue_id: &str) -> Result<()>;
 
+    /// Move an issue to a different project
+    async fn move_issue(
+        &mut self,
+        source_project_path: &str,
+        issue_id: &str,
+        target_project_path: &str,
+    ) -> Result<(Issue, u32)>;
+
+    /// Move a doc to a different project
+    async fn move_doc(
+        &mut self,
+        source_project_path: &str,
+        slug: &str,
+        target_project_path: &str,
+        new_slug: Option<String>,
+    ) -> Result<(Doc, String)>;
+
     /// Create a new PR
     async fn create_pr(
         &mut self,
