@@ -179,3 +179,22 @@ pub fn get_field_count(app: &App) -> usize {
         3 // Title, Content, Slug
     }
 }
+
+/// Draw doc edit form with unified layout
+pub fn draw_edit(frame: &mut Frame, area: Rect, app: &App) {
+    use super::edit_page::{draw_edit_page, EditEntityType, EditPageConfig};
+
+    let doc_title = app
+        .state
+        .selected_doc_slug
+        .as_ref()
+        .map(|s| format!("Edit Doc: {}", s))
+        .unwrap_or_else(|| "Edit Doc".to_string());
+
+    let config = EditPageConfig {
+        entity_type: EditEntityType::Doc,
+        title: doc_title,
+    };
+
+    draw_edit_page(frame, area, app, &config);
+}

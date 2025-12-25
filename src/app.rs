@@ -274,6 +274,7 @@ impl App {
             View::Docs => self.handle_docs_key(key).await?,
             View::DocDetail => self.handle_doc_detail_key(key).await?,
             View::DocCreate => self.handle_doc_create_key(key).await?,
+            View::DocEdit => self.handle_doc_edit_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
         }
 
@@ -582,11 +583,17 @@ impl App {
             }
             // Edit issue
             KeyCode::Char('e') => {
-                if let Some(issue_id) = &self.state.selected_issue_id {
+                if let Some(issue_id) = self.state.selected_issue_id.clone() {
+                    // Load issue data into form before navigating
+                    if let Some(issue) =
+                        self.state.issues.iter().find(|i| i.id == issue_id).cloned()
+                    {
+                        self.state.load_issue_to_form(&issue);
+                    }
                     self.navigate(
                         View::IssueEdit,
                         ViewParams {
-                            issue_id: Some(issue_id.clone()),
+                            issue_id: Some(issue_id),
                             ..Default::default()
                         },
                     );
@@ -1388,11 +1395,15 @@ impl App {
             }
             // Edit PR
             KeyCode::Char('e') => {
-                if let Some(pr_id) = &self.state.selected_pr_id {
+                if let Some(pr_id) = self.state.selected_pr_id.clone() {
+                    // Load PR data into form before navigating
+                    if let Some(pr) = self.state.prs.iter().find(|p| p.id == pr_id).cloned() {
+                        self.state.load_pr_to_form(&pr);
+                    }
                     self.navigate(
                         View::PrEdit,
                         ViewParams {
-                            pr_id: Some(pr_id.clone()),
+                            pr_id: Some(pr_id),
                             ..Default::default()
                         },
                     );
@@ -1646,6 +1657,22 @@ impl App {
                     self.state.action_panel_up();
                 }
             }
+            // Edit doc
+            KeyCode::Char('e') => {
+                if let Some(slug) = self.state.selected_doc_slug.clone() {
+                    // Load doc data into form before navigating
+                    if let Some(doc) = self.state.docs.iter().find(|d| d.slug == slug).cloned() {
+                        self.state.load_doc_to_form(&doc);
+                    }
+                    self.navigate(
+                        View::DocEdit,
+                        ViewParams {
+                            doc_slug: Some(slug),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
             KeyCode::Char('d') | KeyCode::PageDown => {
                 if matches!(self.state.doc_detail_focus, DocDetailFocus::Content) {
                     self.state.scroll_down_page();
@@ -1783,6 +1810,84 @@ impl App {
         }
     }
 
+    /// Handle keys in Doc Edit view
+    async fn handle_doc_edit_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
+            // Save (Ctrl+S or Cmd+W / Ctrl+W)
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.save_doc_edit().await;
+            }
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
+                self.save_doc_edit().await;
+            }
+            KeyCode::Tab => self.state.next_form_field(),
+            KeyCode::BackTab => self.state.prev_form_field(),
+            KeyCode::Char(c) => self
+                .state
+                .form_input_char(c, key.modifiers.contains(KeyModifiers::SHIFT)),
+            KeyCode::Backspace => self.state.form_backspace(),
+            KeyCode::Enter => {
+                // Enter in content field adds newline
+                if self.state.active_form_field == 1 {
+                    self.state.form_description.push('\n');
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Helper to save doc edit
+    async fn save_doc_edit(&mut self) {
+        let Some(path) = self.state.selected_project_path.clone() else {
+            self.push_error("No project selected");
+            return;
+        };
+        let Some(slug) = self.state.selected_doc_slug.clone() else {
+            self.push_error("No doc selected");
+            return;
+        };
+
+        // Check if slug changed
+        let new_slug = if !self.state.form_slug.is_empty() && self.state.form_slug != slug {
+            Some(self.state.form_slug.as_str())
+        } else {
+            None
+        };
+
+        let result = self
+            .daemon
+            .update_doc(
+                &path,
+                &slug,
+                &self.state.form_title,
+                &self.state.form_description,
+                new_slug,
+            )
+            .await;
+
+        match result {
+            Ok(()) => {
+                if let Ok(docs) = self.daemon.list_docs(&path).await {
+                    self.state.docs = docs;
+                }
+                // Update selected slug if it changed
+                if let Some(ns) = new_slug {
+                    self.state.selected_doc_slug = Some(ns.to_string());
+                }
+                self.state.clear_form();
+                self.go_back();
+            }
+            Err(e) => {
+                self.push_error(format!("Failed to update doc: {}", e));
+            }
+        }
+    }
+
     /// Handle keys in Config view
     async fn handle_config_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
@@ -1879,7 +1984,7 @@ impl App {
             View::PrCreate | View::PrEdit => self.handle_form_mouse(mouse).await?,
             View::Docs => self.handle_list_mouse(mouse, self.state.docs.len()).await?,
             View::DocDetail => self.handle_scroll_mouse(mouse).await?,
-            View::DocCreate => self.handle_form_mouse(mouse).await?,
+            View::DocCreate | View::DocEdit => self.handle_form_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
         }
 
