@@ -1,5 +1,6 @@
 //! Application state definitions
 
+use super::forms::{Form, FormState, IssueCreateForm, IssueEditForm, PrCreateForm, PrEditForm, DocCreateForm};
 use super::SelectionState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -549,7 +550,10 @@ pub struct AppState {
     pub last_click_time: Option<Instant>,
     pub last_click_index: Option<usize>,
 
-    // Form state
+    // Form state (DDD)
+    pub form: FormState,
+
+    // Legacy form state (kept for compatibility during migration)
     pub active_form_field: usize,
     pub form_title: String,
     pub form_description: String,
@@ -892,6 +896,38 @@ impl AppState {
         self.form_status = pr.metadata.status.clone();
         self.form_source_branch = pr.metadata.source_branch.clone();
         self.form_target_branch = pr.metadata.target_branch.clone();
+    }
+
+    // =========== Form State Transitions (DDD) ===========
+
+    /// Start creating a new issue
+    pub fn start_issue_create(&mut self) {
+        self.form = FormState::IssueCreate(IssueCreateForm::new());
+    }
+
+    /// Start editing an existing issue
+    pub fn start_issue_edit(&mut self, issue: &Issue) {
+        self.form = FormState::IssueEdit(IssueEditForm::from_issue(issue));
+    }
+
+    /// Start creating a new PR
+    pub fn start_pr_create(&mut self) {
+        self.form = FormState::PrCreate(PrCreateForm::new());
+    }
+
+    /// Start editing an existing PR
+    pub fn start_pr_edit(&mut self, pr: &PullRequest) {
+        self.form = FormState::PrEdit(PrEditForm::from_pr(pr));
+    }
+
+    /// Start creating a new doc
+    pub fn start_doc_create(&mut self) {
+        self.form = FormState::DocCreate(DocCreateForm::new());
+    }
+
+    /// Reset form state
+    pub fn reset_form(&mut self) {
+        self.form = FormState::None;
     }
 
     // =========== Action Panel Navigation ===========
