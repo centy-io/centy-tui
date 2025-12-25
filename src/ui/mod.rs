@@ -79,6 +79,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // Apply selection highlighting
         apply_selection_highlight(frame, &app.state.selection, area);
     }
+
+    // Draw error dialog last (on top of everything)
+    if let Some(error_msg) = &app.state.error_dialog {
+        components::render_error_dialog(frame, error_msg);
+    }
 }
 
 /// Populate the screen buffer from the current frame

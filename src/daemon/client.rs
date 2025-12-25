@@ -593,11 +593,11 @@ impl DaemonClient {
         let response = client
             .open_in_temp_vscode(request)
             .await
-            .map_err(|e| anyhow!("Failed to open in temp VSCode: {}", e))?;
+            .map_err(|e| anyhow!("Connection error: {}", e))?;
 
         let inner = response.into_inner();
         if !inner.success {
-            return Err(anyhow!("Failed to open in temp VSCode: {}", inner.error));
+            return Err(anyhow!("{}", inner.error));
         }
 
         Ok(OpenInVscodeResult {

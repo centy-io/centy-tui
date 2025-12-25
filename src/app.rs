@@ -176,6 +176,14 @@ impl App {
 
     /// Handle a key event
     pub async fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Handle error dialog dismissal first (modal)
+        if self.state.error_dialog.is_some() {
+            if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+                self.state.error_dialog = None;
+            }
+            return Ok(());
+        }
+
         // Clear any status messages on key press
         self.copy_message = None;
 
@@ -736,7 +744,25 @@ impl App {
                 }
             }
             Err(e) => {
-                self.status_message = Some(format!("Failed to open: {}", e));
+                let error_str = e.to_string();
+                let error_lower = error_str.to_lowercase();
+                let user_msg = if error_str.contains("detached HEAD") {
+                    "Repository is in detached HEAD state.\nCheckout a branch first: git checkout <branch>".to_string()
+                } else if error_lower.contains("worktree") {
+                    "Failed to create git worktree.\nTry closing other VS Code windows for this project.".to_string()
+                } else if error_lower.contains("not a git repository") {
+                    "This project is not a git repository.\nInitialize with: git init".to_string()
+                } else if error_lower.contains("not found") && error_lower.contains("vscode") {
+                    "VS Code not found.\nInstall it and add 'code' to PATH.".to_string()
+                } else if error_lower.contains("connection") {
+                    "Cannot connect to centy daemon.\nIs it running? Try: centy daemon start".to_string()
+                } else {
+                    // Clean up nested error prefixes for unknown errors
+                    error_str
+                        .replace("Git error: ", "")
+                        .replace("Worktree error: ", "")
+                };
+                self.state.error_dialog = Some(user_msg);
             }
         }
 

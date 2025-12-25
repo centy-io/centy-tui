@@ -585,6 +585,7 @@ pub struct AppState {
     pub scroll_offset: usize,
     pub daemon_connected: bool,
     pub confirm_action: Option<String>,
+    pub error_dialog: Option<String>,
 
     // Issue detail action panel state
     pub issue_detail_focus: IssueDetailFocus,
