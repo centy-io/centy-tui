@@ -42,17 +42,15 @@ pub fn render_button(
     frame.render_widget(paragraph.block(block), area);
 }
 
-/// Render a sidebar button with key and label
+/// Render a sidebar button
 pub fn render_sidebar_button(
     frame: &mut Frame,
     area: Rect,
-    key: &str,
     label: &str,
     is_selected: bool,
     is_enabled: bool,
 ) {
-    let content = format!("{key} {label}");
-    render_button(frame, area, &content, is_selected, is_enabled);
+    render_button(frame, area, label, is_selected, is_enabled);
 }
 
 /// Render an action panel button with optional custom label color
