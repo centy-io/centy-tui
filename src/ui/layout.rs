@@ -1,12 +1,13 @@
 //! Layout components (header, sidebar, status bar)
 
+use super::components::{render_sidebar_button, BUTTON_HEIGHT};
 use crate::app::App;
 use crate::state::View;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::Paragraph,
     Frame,
 };
 
@@ -63,62 +64,49 @@ pub fn create_layout_no_sidebar(area: Rect) -> Rect {
     chunks[0]
 }
 
-/// Draw the sidebar
+/// Draw the sidebar with boxed buttons
 pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     let has_project = app.state.selected_project_path.is_some();
 
-    let items: Vec<ListItem> = SIDEBAR_ITEMS
-        .iter()
-        .enumerate()
-        .map(|(idx, (key, label))| {
-            // Determine if this item should be highlighted
-            let is_selected = match idx {
-                0 => matches!(app.state.current_view, View::Projects),
-                1 => matches!(
-                    app.state.current_view,
-                    View::Issues | View::IssueDetail | View::IssueCreate | View::IssueEdit
-                ),
-                2 => matches!(
-                    app.state.current_view,
-                    View::Prs | View::PrDetail | View::PrCreate | View::PrEdit
-                ),
-                3 => matches!(
-                    app.state.current_view,
-                    View::Docs | View::DocDetail | View::DocCreate
-                ),
-                4 => matches!(app.state.current_view, View::Config),
-                _ => false,
-            };
+    // Create vertical layout for button boxes
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(BUTTON_HEIGHT), // Projects
+            Constraint::Length(BUTTON_HEIGHT), // Issues
+            Constraint::Length(BUTTON_HEIGHT), // PRs
+            Constraint::Length(BUTTON_HEIGHT), // Docs
+            Constraint::Length(BUTTON_HEIGHT), // Config
+            Constraint::Min(0),                // Remaining space
+        ])
+        .split(area);
 
-            // Check if item requires project selection
-            let requires_project = (1..=4).contains(&idx);
-            let is_enabled = !requires_project || has_project;
+    // Render each button
+    for (idx, (key, label)) in SIDEBAR_ITEMS.iter().enumerate() {
+        let is_selected = match idx {
+            0 => matches!(app.state.current_view, View::Projects),
+            1 => matches!(
+                app.state.current_view,
+                View::Issues | View::IssueDetail | View::IssueCreate | View::IssueEdit
+            ),
+            2 => matches!(
+                app.state.current_view,
+                View::Prs | View::PrDetail | View::PrCreate | View::PrEdit
+            ),
+            3 => matches!(
+                app.state.current_view,
+                View::Docs | View::DocDetail | View::DocCreate
+            ),
+            4 => matches!(app.state.current_view, View::Config),
+            _ => false,
+        };
 
-            let style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else if !is_enabled {
-                Style::default().fg(Color::DarkGray)
-            } else {
-                Style::default()
-            };
+        // Check if item requires project selection
+        let requires_project = (1..=4).contains(&idx);
+        let is_enabled = !requires_project || has_project;
 
-            let prefix = if is_selected { "▸ " } else { "  " };
-            let content = format!("{prefix}[{key}] {label}");
-
-            ListItem::new(Line::from(vec![Span::styled(content, style)]))
-        })
-        .collect();
-
-    let list = List::new(items).block(
-        Block::default()
-            .title(" Centy ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
-    );
-
-    frame.render_widget(list, area);
+        render_sidebar_button(frame, chunks[idx], key, label, is_selected, is_enabled);
+    }
 }
 
 /// Draw the status bar

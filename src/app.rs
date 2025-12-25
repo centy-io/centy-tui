@@ -5,6 +5,7 @@ use crate::state::{
     AppState, IssueDetailFocus, IssuesListFocus, LlmAction, LogoStyle, ScreenBuffer, ScreenPos,
     SplashState, View, ViewParams,
 };
+use crate::ui::BUTTON_HEIGHT;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use std::time::{Duration, Instant};
@@ -1096,10 +1097,9 @@ impl App {
 
     async fn handle_sidebar_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
         const SIDEBAR_WIDTH: u16 = 20;
-        const SIDEBAR_ITEMS_START_Y: u16 = 2;
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            if mouse.column < SIDEBAR_WIDTH && mouse.row >= SIDEBAR_ITEMS_START_Y {
-                let item_index = (mouse.row - SIDEBAR_ITEMS_START_Y) as usize;
+            if mouse.column < SIDEBAR_WIDTH {
+                let item_index = (mouse.row / BUTTON_HEIGHT) as usize;
                 let has_project = self.state.selected_project_path.is_some();
                 match item_index {
                     0 => {

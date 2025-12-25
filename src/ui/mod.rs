@@ -1,5 +1,6 @@
 //! UI module for rendering the TUI
 
+pub mod components;
 mod config_panel;
 mod docs;
 mod forms;
@@ -10,6 +11,7 @@ mod prs;
 mod splash;
 mod widgets;
 
+pub use components::BUTTON_HEIGHT;
 pub use widgets::render_scrollable_list;
 
 use crate::app::App;
