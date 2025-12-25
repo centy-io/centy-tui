@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
 
@@ -68,7 +68,7 @@ fn draw_field(
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    frame.render_widget(content.block(block), area);
+    frame.render_widget(content.wrap(Wrap { trim: false }).block(block), area);
 }
 
 /// Draw issue create form
