@@ -151,10 +151,10 @@ fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &App) {
     render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
 }
 
-/// Draw the issues list action panel (right side)
+/// Draw the issues list daemon actions (right side)
 fn draw_issues_list_action_panel(frame: &mut Frame, area: Rect, app: &App) {
     let is_focused = matches!(app.state.issues_list_focus, IssuesListFocus::ActionPanel);
-    super::render_action_panel(frame, area, app, is_focused);
+    super::render_daemon_actions(frame, area, app, is_focused);
 }
 
 /// Draw issue detail view
@@ -190,8 +190,8 @@ pub fn draw_detail(frame: &mut Frame, area: Rect, app: &App) {
     // Draw content
     draw_issue_content(frame, content_area, app, issue);
 
-    // Draw action panel
-    draw_action_panel(frame, action_area, app);
+    // Draw daemon actions panel
+    draw_daemon_actions_panel(frame, action_area, app);
 }
 
 /// Draw the issue content (left side)
@@ -286,8 +286,8 @@ fn draw_issue_content(frame: &mut Frame, area: Rect, app: &App, issue: &crate::s
     frame.render_widget(paragraph, area);
 }
 
-/// Draw the action panel (right side)
-fn draw_action_panel(frame: &mut Frame, area: Rect, app: &App) {
+/// Draw the daemon actions panel (right side)
+fn draw_daemon_actions_panel(frame: &mut Frame, area: Rect, app: &App) {
     let is_focused = matches!(app.state.issue_detail_focus, IssueDetailFocus::ActionPanel);
-    super::render_action_panel(frame, area, app, is_focused);
+    super::render_daemon_actions(frame, area, app, is_focused);
 }

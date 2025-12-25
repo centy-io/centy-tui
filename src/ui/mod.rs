@@ -143,10 +143,11 @@ fn apply_selection_highlight(
     }
 }
 
-/// Render a dynamic action panel with boxed buttons (scrollable when content exceeds area)
+/// Render the daemon actions panel with boxed buttons (scrollable when content exceeds area)
 ///
 /// This is a shared component used by Issues, PRs, and Docs views.
-pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused: bool) {
+/// Daemon actions are fetched from the backend daemon and executed remotely.
+pub fn render_daemon_actions(frame: &mut Frame, area: Rect, app: &App, is_focused: bool) {
     use components::{render_vertical_button_group, ButtonGroupItem, VerticalButtonGroupConfig};
     use ratatui::layout::{Constraint, Direction, Layout};
 
@@ -159,7 +160,7 @@ pub fn render_action_panel(frame: &mut Frame, area: Rect, app: &App, is_focused:
 
     // Create outer block
     let block = Block::default()
-        .title(" Actions ")
+        .title(" Daemon Actions ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
 
