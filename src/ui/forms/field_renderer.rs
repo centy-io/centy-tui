@@ -1,5 +1,6 @@
 //! Field rendering utilities for forms
 
+#[allow(unused_imports)]
 use crate::state::FormField;
 use ratatui::{
     layout::Rect,
@@ -10,6 +11,8 @@ use ratatui::{
 };
 
 /// Draw a form field using FormField from the domain layer
+/// Scaffolding for future form refactoring - not yet integrated
+#[allow(dead_code)]
 pub fn draw_field(frame: &mut Frame, area: Rect, field: &FormField, is_active: bool) {
     let style = if is_active {
         Style::default().fg(Color::Cyan)

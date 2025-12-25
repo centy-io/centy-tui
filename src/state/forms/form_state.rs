@@ -77,19 +77,19 @@ impl FormState {
             FormState::None => false,
             FormState::IssueCreate(f) => f
                 .get_field(f.active_field())
-                .map_or(false, |f| f.is_multiline),
+                .is_some_and(|f| f.is_multiline),
             FormState::IssueEdit(f) => f
                 .get_field(f.active_field())
-                .map_or(false, |f| f.is_multiline),
+                .is_some_and(|f| f.is_multiline),
             FormState::PrCreate(f) => f
                 .get_field(f.active_field())
-                .map_or(false, |f| f.is_multiline),
+                .is_some_and(|f| f.is_multiline),
             FormState::PrEdit(f) => f
                 .get_field(f.active_field())
-                .map_or(false, |f| f.is_multiline),
+                .is_some_and(|f| f.is_multiline),
             FormState::DocCreate(f) => f
                 .get_field(f.active_field())
-                .map_or(false, |f| f.is_multiline),
+                .is_some_and(|f| f.is_multiline),
         }
     }
 }

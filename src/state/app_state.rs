@@ -1,7 +1,7 @@
 //! Application state definitions
 
 use super::forms::{
-    DocCreateForm, Form, FormState, IssueCreateForm, IssueEditForm, PrCreateForm, PrEditForm,
+    DocCreateForm, FormState, IssueCreateForm, IssueEditForm, PrCreateForm, PrEditForm,
 };
 use super::SelectionState;
 use chrono::{DateTime, Utc};
@@ -566,7 +566,8 @@ pub struct AppState {
     pub last_click_time: Option<Instant>,
     pub last_click_index: Option<usize>,
 
-    // Form state (DDD)
+    // Form state (DDD) - scaffolding for future form refactoring
+    #[allow(dead_code)]
     pub form: FormState,
 
     // Legacy form state (kept for compatibility during migration)
@@ -915,33 +916,34 @@ impl AppState {
     }
 
     // =========== Form State Transitions (DDD) ===========
+    // Scaffolding for future form refactoring - not yet integrated
 
-    /// Start creating a new issue
+    #[allow(dead_code)]
     pub fn start_issue_create(&mut self) {
         self.form = FormState::IssueCreate(IssueCreateForm::new());
     }
 
-    /// Start editing an existing issue
+    #[allow(dead_code)]
     pub fn start_issue_edit(&mut self, issue: &Issue) {
         self.form = FormState::IssueEdit(IssueEditForm::from_issue(issue));
     }
 
-    /// Start creating a new PR
+    #[allow(dead_code)]
     pub fn start_pr_create(&mut self) {
         self.form = FormState::PrCreate(PrCreateForm::new());
     }
 
-    /// Start editing an existing PR
+    #[allow(dead_code)]
     pub fn start_pr_edit(&mut self, pr: &PullRequest) {
         self.form = FormState::PrEdit(PrEditForm::from_pr(pr));
     }
 
-    /// Start creating a new doc
+    #[allow(dead_code)]
     pub fn start_doc_create(&mut self) {
         self.form = FormState::DocCreate(DocCreateForm::new());
     }
 
-    /// Reset form state
+    #[allow(dead_code)]
     pub fn reset_form(&mut self) {
         self.form = FormState::None;
     }
