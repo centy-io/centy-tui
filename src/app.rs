@@ -2249,6 +2249,16 @@ impl App {
                     }
                 }
             }
+            // Navigation actions between list pages
+            "nav_issues" => {
+                self.navigate(View::Issues, ViewParams::default());
+            }
+            "nav_prs" => {
+                self.navigate(View::Prs, ViewParams::default());
+            }
+            "nav_docs" => {
+                self.navigate(View::Docs, ViewParams::default());
+            }
             _ => {}
         }
         Ok(())

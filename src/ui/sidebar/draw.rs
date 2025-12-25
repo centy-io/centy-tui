@@ -43,11 +43,18 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
                 action.label.to_string()
             };
 
+            // Use different colors for different action types
+            let color = if action.id.starts_with("nav_") {
+                Color::Cyan // Navigation actions in cyan
+            } else {
+                Color::Green // Create/Edit actions in green
+            };
+
             ButtonGroupItem::new(label)
                 .selected(false) // Local actions aren't "selected" like nav
                 .enabled(true)
                 .pressed(is_pressed)
-                .color(Some(Color::Green)) // Edit actions in green
+                .color(Some(color))
         })
         .collect();
 
