@@ -12,13 +12,7 @@ use ratatui::{
 };
 
 /// Sidebar items
-const SIDEBAR_ITEMS: &[(&str, &str)] = &[
-    ("1", "Projects"),
-    ("2", "Issues"),
-    ("3", "PRs"),
-    ("4", "Docs"),
-    ("5", "Config"),
-];
+const SIDEBAR_ITEMS: &[&str] = &["Projects", "Issues", "PRs", "Docs", "Config"];
 
 /// Create the main layout with sidebar
 pub fn create_layout(area: Rect) -> (Rect, Rect) {
@@ -68,21 +62,22 @@ pub fn create_layout_no_sidebar(area: Rect) -> Rect {
 pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     let has_project = app.state.selected_project_path.is_some();
 
-    // Create vertical layout for button boxes
+    // Create vertical layout for button boxes (centered vertically)
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Min(0),                // Top padding (flex)
             Constraint::Length(BUTTON_HEIGHT), // Projects
             Constraint::Length(BUTTON_HEIGHT), // Issues
             Constraint::Length(BUTTON_HEIGHT), // PRs
             Constraint::Length(BUTTON_HEIGHT), // Docs
             Constraint::Length(BUTTON_HEIGHT), // Config
-            Constraint::Min(0),                // Remaining space
+            Constraint::Min(0),                // Bottom padding (flex)
         ])
         .split(area);
 
     // Render each button
-    for (idx, (key, label)) in SIDEBAR_ITEMS.iter().enumerate() {
+    for (idx, label) in SIDEBAR_ITEMS.iter().enumerate() {
         let is_selected = match idx {
             0 => matches!(app.state.current_view, View::Projects),
             1 => matches!(
@@ -105,7 +100,7 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
         let requires_project = (1..=4).contains(&idx);
         let is_enabled = !requires_project || has_project;
 
-        render_sidebar_button(frame, chunks[idx], key, label, is_selected, is_enabled);
+        render_sidebar_button(frame, chunks[idx + 1], label, is_selected, is_enabled);
     }
 }
 
