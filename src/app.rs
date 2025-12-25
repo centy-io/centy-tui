@@ -222,13 +222,18 @@ impl App {
     pub fn go_back(&mut self) {
         // Clear selection on view change
         self.state.selection.clear();
-        if let Some((view, params)) = self.state.view_history.pop() {
+        // Skip form views in history to go back to the last non-form view
+        while let Some((view, params)) = self.state.view_history.pop() {
+            if view.is_form_view() {
+                continue;
+            }
             // Clear selected project when returning to Projects view
             if matches!(view, View::Projects) {
                 self.state.selected_project_path = None;
             }
             self.state.current_view = view;
             self.state.view_params = params;
+            return;
         }
     }
 
