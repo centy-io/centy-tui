@@ -8,6 +8,9 @@ use ratatui::{
     Frame,
 };
 
+/// Default text style for dialog content (white on black background)
+pub const TEXT_STYLE: Style = Style::new().fg(Color::White);
+
 /// Configuration for rendering a dialog
 pub struct DialogConfig<'a> {
     /// Dialog title
@@ -86,7 +89,7 @@ pub fn render_dialog(frame: &mut Frame, config: DialogConfig) {
     ];
 
     for line in wrapped_lines {
-        content.push(Line::from(line));
+        content.push(Line::from(Span::styled(line, TEXT_STYLE)));
     }
 
     if let Some(hint_spans) = config.hint {
@@ -101,7 +104,7 @@ pub fn render_dialog(frame: &mut Frame, config: DialogConfig) {
                 .border_style(Style::default().fg(config.border_color))
                 .style(Style::default().bg(Color::Black)),
         )
-        .style(Style::default().bg(Color::Black));
+        .style(Style::new().bg(Color::Black).fg(Color::White));
 
     frame.render_widget(dialog, dialog_area);
 }
