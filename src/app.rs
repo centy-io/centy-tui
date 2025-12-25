@@ -958,9 +958,7 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('w')
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
             {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
@@ -1012,9 +1010,7 @@ impl App {
         match key.code {
             KeyCode::Tab => self.state.next_form_field(),
             KeyCode::BackTab => self.state.prev_form_field(),
-            KeyCode::Char('w')
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
             {
                 if let (Some(path), Some(issue_id)) = (
                     &self.state.selected_project_path,
@@ -1201,9 +1197,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w')
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
             {
                 if let Some(path) = &self.state.selected_project_path {
                     let result = self
@@ -1249,9 +1243,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w')
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
             {
                 if let (Some(path), Some(pr_id)) = (
                     &self.state.selected_project_path,
@@ -1416,9 +1408,7 @@ impl App {
                 self.state.clear_form();
                 self.go_back();
             }
-            KeyCode::Char('w')
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    || key.modifiers.contains(KeyModifiers::SUPER) =>
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) =>
             {
                 if let Some(path) = &self.state.selected_project_path {
                     let slug = if self.state.form_slug.is_empty() {

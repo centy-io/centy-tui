@@ -6,6 +6,7 @@
 mod app;
 mod config;
 mod daemon;
+mod platform;
 mod state;
 mod ui;
 
@@ -96,29 +97,33 @@ async fn run_app<B: ratatui::backend::Backend>(
         if event::poll(poll_duration)? {
             match event::read()? {
                 Event::Key(key) => {
-                    // Check for copy shortcut: Ctrl+C or Cmd+C (Super+C on macOS)
+                    // Platform-specific copy shortcut: Cmd+C on macOS, Ctrl+C on Linux/Windows
                     let is_copy_shortcut = key.code == KeyCode::Char('c')
-                        && (key.modifiers.contains(KeyModifiers::CONTROL)
-                            || key.modifiers.contains(KeyModifiers::SUPER));
+                        && key.modifiers.contains(platform::COPY_MODIFIER);
 
-                    if is_copy_shortcut {
-                        if app.state.selection.has_selection() {
-                            // Copy selection
-                            if let Err(e) = app.copy_selection() {
-                                app.status_message = Some(format!("Copy failed: {}", e));
-                            }
-                            app.last_ctrl_c = None;
-                        } else if !in_splash && key.modifiers.contains(KeyModifiers::CONTROL) {
-                            // Double-tap Ctrl+C to quit (only for Ctrl, not Cmd)
-                            let now = std::time::Instant::now();
-                            if let Some(last) = app.last_ctrl_c {
-                                if now.duration_since(last).as_millis() < 500 {
-                                    return Ok(());
-                                }
-                            }
-                            app.last_ctrl_c = Some(now);
-                            app.status_message = Some("Press ^C again to quit".to_string());
+                    // Ctrl+C is always the quit shortcut (double-tap) on all platforms
+                    let is_ctrl_c = key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL);
+
+                    if is_copy_shortcut && app.state.selection.has_selection() {
+                        // Copy selection
+                        if let Err(e) = app.copy_selection() {
+                            app.status_message = Some(format!("Copy failed: {}", e));
                         }
+                        app.last_ctrl_c = None;
+                        continue;
+                    }
+
+                    if is_ctrl_c && !in_splash {
+                        // Double-tap Ctrl+C to quit
+                        let now = std::time::Instant::now();
+                        if let Some(last) = app.last_ctrl_c {
+                            if now.duration_since(last).as_millis() < 500 {
+                                return Ok(());
+                            }
+                        }
+                        app.last_ctrl_c = Some(now);
+                        app.status_message = Some("Press ^C again to quit".to_string());
                         continue;
                     }
 

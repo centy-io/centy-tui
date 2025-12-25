@@ -59,7 +59,7 @@ pub fn draw_create(frame: &mut Frame, area: Rect, app: &App) {
     let help = Paragraph::new(Line::from(vec![
         Span::styled("Tab", Style::default().fg(Color::Cyan)),
         Span::raw(": next field  "),
-        Span::styled("Ctrl+S", Style::default().fg(Color::Cyan)),
+        Span::styled(crate::platform::SAVE_SHORTCUT, Style::default().fg(Color::Cyan)),
         Span::raw(": save  "),
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::raw(": cancel"),
