@@ -2285,6 +2285,7 @@ mod tests {
 
     /// Test-only struct that mirrors App but doesn't require DaemonClient
     /// Only use this for testing synchronous methods that don't touch daemon
+    #[allow(dead_code)]
     struct TestApp {
         state: AppState,
         quit: bool,

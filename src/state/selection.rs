@@ -265,8 +265,10 @@ mod tests {
 
         #[test]
         fn test_get_range_returns_none_with_only_anchor() {
-            let mut state = SelectionState::default();
-            state.anchor = Some(ScreenPos::new(5, 10));
+            let state = SelectionState {
+                anchor: Some(ScreenPos::new(5, 10)),
+                ..Default::default()
+            };
             assert!(state.get_range().is_none());
         }
 
