@@ -38,6 +38,7 @@
   ],
   "ignorePaths": [
     ".centy-manifest.json",
+    ".centy/**",
     "proto/**",
     "target/**"
   ]
