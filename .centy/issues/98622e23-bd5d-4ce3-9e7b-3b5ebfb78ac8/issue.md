@@ -1,0 +1,3 @@
+# Keyboard functionality
+
+We want the user to have full keyboard funcationalty accurding to the user settings in the os, e.g. in mac the copy command is not ctl+c its cmd+c etc...
