@@ -8,7 +8,7 @@ mod issues;
 mod layout;
 mod projects;
 mod prs;
-mod sidebar;
+pub mod sidebar;
 mod splash;
 mod widgets;
 
@@ -38,9 +38,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         return;
     }
 
-    // Determine if we should show sidebar (only when a project is selected and not in a form view)
-    let has_project = app.state.selected_project_path.is_some();
-    let show_sidebar = has_project && !app.state.current_view.is_form_view();
+    // Determine if we should show sidebar (local actions for non-form, non-splash, non-projects views)
+    let show_sidebar = sidebar::should_show_sidebar(&app.state.current_view);
 
     let main_area = if show_sidebar {
         // Draw the main layout with sidebar

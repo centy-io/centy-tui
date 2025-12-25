@@ -184,7 +184,14 @@ impl App {
     /// - Scroll indicators when content is scrollable
     /// - Scroll offset to map visible position to correct item index
     fn calculate_sidebar_item_from_click(&self, mouse_row: u16) -> Option<usize> {
-        const SIDEBAR_ITEM_COUNT: usize = 5;
+        use crate::ui::sidebar::get_local_actions;
+
+        let actions = get_local_actions(&self.state.current_view);
+        let item_count = actions.len();
+
+        if item_count == 0 {
+            return None;
+        }
 
         // Get sidebar height from terminal size (height - 1 for status bar)
         let sidebar_height = self
@@ -192,8 +199,8 @@ impl App {
             .map(|(h, _)| h.saturating_sub(1))
             .unwrap_or(24);
 
-        // Calculate content height: 5 items × 3 rows each = 15
-        let content_height = (SIDEBAR_ITEM_COUNT as u16) * BUTTON_HEIGHT;
+        // Calculate content height: N items × BUTTON_HEIGHT rows each
+        let content_height = (item_count as u16) * BUTTON_HEIGHT;
 
         // Calculate top padding (centering logic from vertical_button_group.rs:124-128)
         let (top_padding, first_visible) = if content_height <= sidebar_height {
@@ -221,7 +228,7 @@ impl App {
         let clicked_visible_index = (row_in_buttons / BUTTON_HEIGHT) as usize;
         let item_index = first_visible + clicked_visible_index;
 
-        if item_index < SIDEBAR_ITEM_COUNT {
+        if item_index < item_count {
             Some(item_index)
         } else {
             None
@@ -1954,11 +1961,8 @@ impl App {
         // Track view before handling mouse to detect navigation
         let view_before = self.state.current_view.clone();
 
-        // Only check sidebar mouse if sidebar is visible (project selected and not in form view)
-        let has_project = self.state.selected_project_path.is_some();
-        if has_project
-            && self.state.current_view != View::Splash
-            && !self.state.current_view.is_form_view()
+        // Only check sidebar mouse if sidebar is visible (local actions sidebar)
+        if crate::ui::sidebar::should_show_sidebar(&self.state.current_view)
             && self.handle_sidebar_mouse(mouse).await?
         {
             // Refresh actions if view changed via sidebar
@@ -1997,24 +2001,28 @@ impl App {
     }
 
     async fn handle_sidebar_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        use crate::ui::sidebar::get_local_actions;
+
         const SIDEBAR_WIDTH: u16 = 20;
-        const SIDEBAR_ITEM_COUNT: usize = 5;
 
         // Only handle events within the sidebar area
         if mouse.column >= SIDEBAR_WIDTH {
             return Ok(false);
         }
 
+        let actions = get_local_actions(&self.state.current_view);
+        if actions.is_empty() {
+            return Ok(false);
+        }
+
         match mouse.kind {
             MouseEventKind::ScrollUp => {
-                // Scroll sidebar up
                 self.state.sidebar_scroll_offset =
                     self.state.sidebar_scroll_offset.saturating_sub(1);
                 return Ok(true);
             }
             MouseEventKind::ScrollDown => {
-                // Scroll sidebar down (max offset is items - visible)
-                let max_offset = SIDEBAR_ITEM_COUNT.saturating_sub(1);
+                let max_offset = actions.len().saturating_sub(1);
                 if self.state.sidebar_scroll_offset < max_offset {
                     self.state.sidebar_scroll_offset += 1;
                 }
@@ -2024,49 +2032,78 @@ impl App {
                 let Some(item_index) = self.calculate_sidebar_item_from_click(mouse.row) else {
                     return Ok(false);
                 };
-                let has_project = self.state.selected_project_path.is_some();
-                match item_index {
-                    0 => {
-                        self.state.button_press =
-                            Some(ButtonPressState::new(PressedButton::Sidebar(0)));
-                        self.state.sidebar_index = 0;
-                        self.navigate(View::Projects, ViewParams::default());
-                        return Ok(true);
-                    }
-                    1 if has_project => {
-                        self.state.button_press =
-                            Some(ButtonPressState::new(PressedButton::Sidebar(1)));
-                        self.state.sidebar_index = 1;
-                        self.navigate(View::Issues, ViewParams::default());
-                        return Ok(true);
-                    }
-                    2 if has_project => {
-                        self.state.button_press =
-                            Some(ButtonPressState::new(PressedButton::Sidebar(2)));
-                        self.state.sidebar_index = 2;
-                        self.navigate(View::Prs, ViewParams::default());
-                        return Ok(true);
-                    }
-                    3 if has_project => {
-                        self.state.button_press =
-                            Some(ButtonPressState::new(PressedButton::Sidebar(3)));
-                        self.state.sidebar_index = 3;
-                        self.navigate(View::Docs, ViewParams::default());
-                        return Ok(true);
-                    }
-                    4 if has_project => {
-                        self.state.button_press =
-                            Some(ButtonPressState::new(PressedButton::Sidebar(4)));
-                        self.state.sidebar_index = 4;
-                        self.navigate(View::Config, ViewParams::default());
-                        return Ok(true);
-                    }
-                    _ => {}
+
+                if item_index < actions.len() {
+                    let action = &actions[item_index];
+
+                    // Trigger button press animation
+                    self.state.button_press =
+                        Some(ButtonPressState::new(PressedButton::Sidebar(item_index)));
+
+                    // Execute the local action
+                    self.execute_local_action(action.id).await?;
+                    return Ok(true);
                 }
             }
             _ => {}
         }
         Ok(false)
+    }
+
+    /// Execute a local action by its ID
+    async fn execute_local_action(&mut self, action_id: &str) -> Result<()> {
+        match action_id {
+            "new_issue" => {
+                self.state.clear_form();
+                self.navigate(View::IssueCreate, ViewParams::default());
+            }
+            "edit_issue" => {
+                if let Some(issue_id) = &self.state.selected_issue_id.clone() {
+                    if let Some(issue) = self
+                        .state
+                        .issues
+                        .iter()
+                        .find(|i| &i.id == issue_id)
+                        .cloned()
+                    {
+                        self.state.load_issue_to_form(&issue);
+                        self.navigate(View::IssueEdit, ViewParams::default());
+                    }
+                }
+            }
+            "new_pr" => {
+                self.state.clear_form();
+                self.navigate(View::PrCreate, ViewParams::default());
+            }
+            "edit_pr" => {
+                if let Some(pr_id) = &self.state.selected_pr_id.clone() {
+                    if let Some(pr) = self.state.prs.iter().find(|p| &p.id == pr_id).cloned() {
+                        self.state.load_pr_to_form(&pr);
+                        self.navigate(View::PrEdit, ViewParams::default());
+                    }
+                }
+            }
+            "new_doc" => {
+                self.state.clear_form();
+                self.navigate(View::DocCreate, ViewParams::default());
+            }
+            "edit_doc" => {
+                if let Some(doc_slug) = &self.state.selected_doc_slug.clone() {
+                    if let Some(doc) = self
+                        .state
+                        .docs
+                        .iter()
+                        .find(|d| &d.slug == doc_slug)
+                        .cloned()
+                    {
+                        self.state.load_doc_to_form(&doc);
+                        self.navigate(View::DocEdit, ViewParams::default());
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Handle mouse events in list views (Issues, PRs, Docs)
