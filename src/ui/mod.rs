@@ -2,6 +2,7 @@
 
 pub mod components;
 mod config_panel;
+mod context_bar;
 mod docs;
 pub mod forms;
 mod issues;
@@ -41,15 +42,18 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // Determine if we should show sidebar (local actions for non-form, non-splash, non-projects views)
     let show_sidebar = sidebar::should_show_sidebar(&app.state.current_view);
 
-    let main_area = if show_sidebar {
+    let (context_bar_area, main_area) = if show_sidebar {
         // Draw the main layout with sidebar
-        let (sidebar_area, main_area) = layout::create_layout(area);
+        let (context_bar_area, sidebar_area, main_area) = layout::create_layout(area);
         sidebar::draw_sidebar(frame, sidebar_area, app);
-        main_area
+        (context_bar_area, main_area)
     } else {
         // Full-width layout without sidebar
         layout::create_layout_no_sidebar(area)
     };
+
+    // Draw context bar
+    context_bar::draw_context_bar(frame, context_bar_area, app);
 
     // Draw main content based on current view
     match &app.state.current_view {

@@ -4,7 +4,8 @@ use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
     IssuesListFocus, LlmAction, LogoStyle, PendingWorktreeAction, PrDetailFocus, PressedButton,
-    PrsListFocus, ScreenBuffer, ScreenPos, SplashState, View, ViewParams, WorktreeDialogOption,
+    PrsListFocus, ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams,
+    WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -150,11 +151,11 @@ impl App {
     ///   - N rows: Action buttons (BUTTON_HEIGHT each)
     /// - Remaining: Help text
     fn calculate_action_index_from_click(&self, mouse_row: u16) -> Option<usize> {
-        if mouse_row < 1 {
-            return None; // Click on border
+        if !UiArea::ActionPanel.contains_row(mouse_row) {
+            return None; // Click on border or context bar
         }
 
-        let row_in_panel = mouse_row - 1; // Account for outer border
+        let row_in_panel = UiArea::ActionPanel.relative_row(mouse_row);
         let grouped = self.state.current_actions.grouped_actions();
 
         let mut current_row: u16 = 0;
@@ -193,10 +194,13 @@ impl App {
             return None;
         }
 
-        // Get sidebar height from terminal size (height - 1 for status bar)
+        // Adjust mouse row for context bar offset
+        let adjusted_row = UiArea::Sidebar.relative_row(mouse_row);
+
+        // Get sidebar height from terminal size (height - 1 for status bar - context bar height)
         let sidebar_height = self
             .terminal_size
-            .map(|(h, _)| h.saturating_sub(1))
+            .map(|(h, _)| h.saturating_sub(1 + UiArea::height_adjustment()))
             .unwrap_or(24);
 
         // Calculate content height: N items × BUTTON_HEIGHT rows each
@@ -220,11 +224,11 @@ impl App {
         };
 
         // Calculate click position relative to the first button
-        if mouse_row < top_padding {
+        if adjusted_row < top_padding {
             return None; // Clicked in padding or indicator area
         }
 
-        let row_in_buttons = mouse_row - top_padding;
+        let row_in_buttons = adjusted_row - top_padding;
         let clicked_visible_index = (row_in_buttons / BUTTON_HEIGHT) as usize;
         let item_index = first_visible + clicked_visible_index;
 
@@ -2094,6 +2098,17 @@ impl App {
         // Track view before handling mouse to detect navigation
         let view_before = self.state.current_view.clone();
 
+        // Check context bar mouse (rows 0-2 for the bordered context bar)
+        if mouse.row < UiArea::Sidebar.start_y()
+            && self.state.current_view != View::Splash
+            && self.handle_context_bar_mouse(mouse).await?
+        {
+            if view_before != self.state.current_view {
+                self.refresh_current_actions().await;
+            }
+            return Ok(());
+        }
+
         // Only check sidebar mouse if sidebar is visible (local actions sidebar)
         if crate::ui::sidebar::should_show_sidebar(&self.state.current_view)
             && self.handle_sidebar_mouse(mouse).await?
@@ -2239,10 +2254,97 @@ impl App {
         Ok(())
     }
 
+    /// Handle mouse events in the context bar (breadcrumb navigation)
+    async fn handle_context_bar_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        // Only handle left clicks on the content row (row 1, between the borders)
+        if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return Ok(false);
+        }
+
+        // Content is on row 1 (row 0 is top border, row 2 is bottom border)
+        // Context bar spans rows 0 to CONTEXT_BAR_HEIGHT-1
+        const CONTENT_ROW: u16 = 1; // Middle row of the 3-row context bar
+        if mouse.row != UiArea::ContextBar.start_y() + CONTENT_ROW {
+            return Ok(false);
+        }
+
+        // Find which segment was clicked
+        for (start_col, end_col, target_view) in &self.state.context_bar_segments {
+            if mouse.column >= *start_col && mouse.column < *end_col {
+                self.navigate_to_breadcrumb_view(target_view.clone());
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Navigate to a view from breadcrumb click
+    fn navigate_to_breadcrumb_view(&mut self, target: View) {
+        match target {
+            View::Projects => {
+                // Clicking on org or project in breadcrumb goes back to projects
+                self.state.selected_project_path = None;
+                self.state.sidebar_index = 0;
+                self.navigate(View::Projects, ViewParams::default());
+            }
+            View::Issues => {
+                self.state.sidebar_index = 1;
+                self.navigate(View::Issues, ViewParams::default());
+            }
+            View::IssueDetail => {
+                // Keep current selection, just navigate to detail view
+                if let Some(id) = self.state.selected_issue_id.clone() {
+                    self.navigate(
+                        View::IssueDetail,
+                        ViewParams {
+                            issue_id: Some(id),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            View::Prs => {
+                self.state.sidebar_index = 2;
+                self.navigate(View::Prs, ViewParams::default());
+            }
+            View::PrDetail => {
+                if let Some(id) = self.state.selected_pr_id.clone() {
+                    self.navigate(
+                        View::PrDetail,
+                        ViewParams {
+                            pr_id: Some(id),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            View::Docs => {
+                self.state.sidebar_index = 3;
+                self.navigate(View::Docs, ViewParams::default());
+            }
+            View::DocDetail => {
+                if let Some(slug) = self.state.selected_doc_slug.clone() {
+                    self.navigate(
+                        View::DocDetail,
+                        ViewParams {
+                            doc_slug: Some(slug),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            View::Config => {
+                self.state.sidebar_index = 4;
+                self.navigate(View::Config, ViewParams::default());
+            }
+            _ => {}
+        }
+    }
+
     /// Handle mouse events in list views (Issues, PRs, Docs)
     async fn handle_list_mouse(&mut self, mouse: MouseEvent, list_len: usize) -> Result<()> {
         let main_area_start_x = self.sidebar_width();
-        const LIST_ITEMS_START_Y: u16 = 3;
         const ACTION_PANEL_WIDTH: u16 = 22;
 
         let terminal_width = self.terminal_size.map(|(_, w)| w).unwrap_or(80);
@@ -2298,8 +2400,9 @@ impl App {
                     return Ok(());
                 }
 
-                if mouse.column >= main_area_start_x && mouse.row >= LIST_ITEMS_START_Y {
-                    let clicked_index = (mouse.row - LIST_ITEMS_START_Y) as usize;
+                if mouse.column >= main_area_start_x && UiArea::ListContent.contains_row(mouse.row)
+                {
+                    let clicked_index = UiArea::ListContent.relative_row(mouse.row) as usize;
                     if clicked_index < list_len {
                         // Check for double-click: same index clicked within 400ms
                         let is_double_click = self
@@ -2388,7 +2491,6 @@ impl App {
     /// Handle mouse events in Projects grid view
     async fn handle_projects_grid_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         let main_area_start_x = self.sidebar_width();
-        const GRID_START_Y: u16 = 2; // After outer border (1) + inner content start
         const MIN_CARD_WIDTH: u16 = 18;
         const CARD_HEIGHT: u16 = 4;
         const CARD_SPACING_H: u16 = 1;
@@ -2423,11 +2525,12 @@ impl App {
                 self.state.ensure_selected_visible(columns, visible_height);
             }
             MouseEventKind::Down(MouseButton::Left) => {
-                if mouse.column >= main_area_start_x && mouse.row >= GRID_START_Y {
+                if mouse.column >= main_area_start_x && UiArea::GridContent.contains_row(mouse.row)
+                {
                     let rel_x = mouse.column - main_area_start_x - 1; // -1 for border
                                                                       // Account for scroll offset when calculating click position
                     let scroll_offset = self.state.scroll_offset as u16;
-                    let rel_y = mouse.row - GRID_START_Y + scroll_offset;
+                    let rel_y = UiArea::GridContent.relative_row(mouse.row) + scroll_offset;
 
                     // Calculate which card was clicked, accounting for section headers
                     let sections = self.state.grouped_projects();
@@ -2563,11 +2666,11 @@ impl App {
 
     async fn handle_form_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         let main_area_start_x = self.sidebar_width();
-        const FORM_START_Y: u16 = 1;
         const FIELD_HEIGHT: u16 = 3;
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            if mouse.column >= main_area_start_x && mouse.row >= FORM_START_Y {
-                let field_index = ((mouse.row - FORM_START_Y) / FIELD_HEIGHT) as usize;
+            if mouse.column >= main_area_start_x && UiArea::FormContent.contains_row(mouse.row) {
+                let field_index =
+                    (UiArea::FormContent.relative_row(mouse.row) / FIELD_HEIGHT) as usize;
                 let max_fields = self.state.form_field_count();
                 if field_index < max_fields {
                     self.state.active_form_field = field_index;
@@ -2776,9 +2879,12 @@ mod tests {
         fn calculate_sidebar_item_from_click(&self, mouse_row: u16) -> Option<usize> {
             const SIDEBAR_ITEM_COUNT: usize = 5;
 
+            // Adjust mouse row for context bar offset
+            let adjusted_row = UiArea::Sidebar.relative_row(mouse_row);
+
             let sidebar_height = self
                 .terminal_size
-                .map(|(h, _)| h.saturating_sub(1))
+                .map(|(h, _)| h.saturating_sub(1 + UiArea::height_adjustment()))
                 .unwrap_or(24);
 
             let content_height = (SIDEBAR_ITEM_COUNT as u16) * BUTTON_HEIGHT;
@@ -2795,11 +2901,11 @@ mod tests {
                 (up_indicator, self.state.sidebar_scroll_offset)
             };
 
-            if mouse_row < top_padding {
+            if adjusted_row < top_padding {
                 return None;
             }
 
-            let row_in_buttons = mouse_row - top_padding;
+            let row_in_buttons = adjusted_row - top_padding;
             let clicked_visible_index = (row_in_buttons / BUTTON_HEIGHT) as usize;
             let item_index = first_visible + clicked_visible_index;
 
@@ -3142,93 +3248,99 @@ mod tests {
 
         #[test]
         fn test_click_with_centered_content() {
-            // Terminal height 50, sidebar height 49 (50 - 1 for status bar)
+            // Terminal height 50, sidebar height 46 (50 - 1 - 3 for status bar and context bar)
             // Content height: 5 items × 3 rows = 15
-            // Top padding: (49 - 15) / 2 = 17
+            // Top padding: (46 - 15) / 2 = 15
+            // Mouse rows are offset by CONTEXT_BAR_HEIGHT (3)
             let app = create_app_with_terminal_size(50, 80);
 
-            // Click on padding area should return None
-            assert!(app.calculate_sidebar_item_from_click(5).is_none());
-            assert!(app.calculate_sidebar_item_from_click(16).is_none());
+            // Click on context bar area (rows 0-2) should return None
+            assert!(app.calculate_sidebar_item_from_click(0).is_none());
+            assert!(app.calculate_sidebar_item_from_click(2).is_none());
 
-            // Click on first item (rows 17-19)
-            assert_eq!(app.calculate_sidebar_item_from_click(17), Some(0));
+            // Click on padding area should return None (rows 3-17)
+            assert!(app.calculate_sidebar_item_from_click(5).is_none());
+            assert!(app.calculate_sidebar_item_from_click(17).is_none());
+
+            // Click on first item (rows 18-20: adjusted 15-17)
             assert_eq!(app.calculate_sidebar_item_from_click(18), Some(0));
             assert_eq!(app.calculate_sidebar_item_from_click(19), Some(0));
+            assert_eq!(app.calculate_sidebar_item_from_click(20), Some(0));
 
-            // Click on second item (rows 20-22)
-            assert_eq!(app.calculate_sidebar_item_from_click(20), Some(1));
-            assert_eq!(app.calculate_sidebar_item_from_click(22), Some(1));
+            // Click on second item (rows 21-23)
+            assert_eq!(app.calculate_sidebar_item_from_click(21), Some(1));
+            assert_eq!(app.calculate_sidebar_item_from_click(23), Some(1));
 
-            // Click on third item (rows 23-25)
-            assert_eq!(app.calculate_sidebar_item_from_click(23), Some(2));
+            // Click on third item (rows 24-26)
+            assert_eq!(app.calculate_sidebar_item_from_click(24), Some(2));
 
-            // Click on fourth item (rows 26-28)
-            assert_eq!(app.calculate_sidebar_item_from_click(26), Some(3));
+            // Click on fourth item (rows 27-29)
+            assert_eq!(app.calculate_sidebar_item_from_click(27), Some(3));
 
-            // Click on fifth item (rows 29-31)
-            assert_eq!(app.calculate_sidebar_item_from_click(29), Some(4));
-            assert_eq!(app.calculate_sidebar_item_from_click(31), Some(4));
+            // Click on fifth item (rows 30-32)
+            assert_eq!(app.calculate_sidebar_item_from_click(30), Some(4));
+            assert_eq!(app.calculate_sidebar_item_from_click(32), Some(4));
 
             // Click past the last item should return None
-            assert!(app.calculate_sidebar_item_from_click(32).is_none());
+            assert!(app.calculate_sidebar_item_from_click(33).is_none());
         }
 
         #[test]
         fn test_click_on_small_terminal_no_scroll() {
-            // Terminal height 17, sidebar height 16 (17 - 1 for status bar)
+            // Terminal height 20, sidebar height 16 (20 - 1 - 3)
             // Content height: 5 items × 3 rows = 15
             // This fits! Top padding: (16 - 15) / 2 = 0
-            let app = create_app_with_terminal_size(17, 80);
+            // Mouse rows offset by 3 (context bar)
+            let app = create_app_with_terminal_size(20, 80);
 
-            // First item at rows 0-2
-            assert_eq!(app.calculate_sidebar_item_from_click(0), Some(0));
-            assert_eq!(app.calculate_sidebar_item_from_click(2), Some(0));
+            // First item at rows 3-5 (adjusted 0-2)
+            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(0));
+            assert_eq!(app.calculate_sidebar_item_from_click(5), Some(0));
 
-            // Second item at rows 3-5
-            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(1));
+            // Second item at rows 6-8 (adjusted 3-5)
+            assert_eq!(app.calculate_sidebar_item_from_click(6), Some(1));
         }
 
         #[test]
         fn test_click_on_small_terminal_with_scroll() {
-            // Terminal height 10, sidebar height 9 (10 - 1 for status bar)
+            // Terminal height 13, sidebar height 9 (13 - 1 - 3)
             // Content height: 5 items × 3 rows = 15 (doesn't fit)
             // No scroll offset, so first item is visible
-            let mut app = create_app_with_terminal_size(10, 80);
+            let mut app = create_app_with_terminal_size(13, 80);
             app.state.sidebar_scroll_offset = 0;
 
-            // First item at rows 0-2 (no up indicator when not scrolled)
-            assert_eq!(app.calculate_sidebar_item_from_click(0), Some(0));
-            assert_eq!(app.calculate_sidebar_item_from_click(2), Some(0));
+            // First item at rows 3-5 (adjusted 0-2, no up indicator when not scrolled)
+            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(0));
+            assert_eq!(app.calculate_sidebar_item_from_click(5), Some(0));
 
-            // Second item at rows 3-5
-            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(1));
+            // Second item at rows 6-8 (adjusted 3-5)
+            assert_eq!(app.calculate_sidebar_item_from_click(6), Some(1));
         }
 
         #[test]
         fn test_click_on_scrolled_sidebar() {
-            // Terminal height 10, sidebar height 9 (10 - 1 for status bar)
+            // Terminal height 13, sidebar height 9 (13 - 1 - 3)
             // Content height: 5 items × 3 rows = 15 (doesn't fit)
             // With scroll offset = 1, first visible is item 1
-            let mut app = create_app_with_terminal_size(10, 80);
+            let mut app = create_app_with_terminal_size(13, 80);
             app.state.sidebar_scroll_offset = 1;
 
-            // Row 0 is the up indicator "^" - clicking should return None
-            assert!(app.calculate_sidebar_item_from_click(0).is_none());
+            // Row 3 (adjusted 0) is the up indicator "^" - clicking should return None
+            assert!(app.calculate_sidebar_item_from_click(3).is_none());
 
-            // First visible item (item 1) at rows 1-3
-            assert_eq!(app.calculate_sidebar_item_from_click(1), Some(1));
-            assert_eq!(app.calculate_sidebar_item_from_click(3), Some(1));
+            // First visible item (item 1) at rows 4-6 (adjusted 1-3)
+            assert_eq!(app.calculate_sidebar_item_from_click(4), Some(1));
+            assert_eq!(app.calculate_sidebar_item_from_click(6), Some(1));
 
-            // Second visible item (item 2) at rows 4-6
-            assert_eq!(app.calculate_sidebar_item_from_click(4), Some(2));
+            // Second visible item (item 2) at rows 7-9 (adjusted 4-6)
+            assert_eq!(app.calculate_sidebar_item_from_click(7), Some(2));
         }
 
         #[test]
         fn test_click_past_last_item_returns_none() {
             let app = create_app_with_terminal_size(50, 80);
 
-            // With 50 row height, padding is 17, items end at row 32
+            // With 50 row height, items end around row 33
             // Any click past the last item should return None
             assert!(app.calculate_sidebar_item_from_click(50).is_none());
             assert!(app.calculate_sidebar_item_from_click(100).is_none());

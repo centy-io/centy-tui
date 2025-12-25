@@ -630,6 +630,10 @@ pub struct AppState {
     /// Queue of error messages to display one at a time
     pub error_queue: VecDeque<String>,
 
+    /// Cached context bar segment positions for mouse click detection
+    /// Each entry is (start_col, end_col, target_view)
+    pub context_bar_segments: Vec<(u16, u16, View)>,
+
     // Issue detail action panel state
     pub issue_detail_focus: IssueDetailFocus,
     pub action_panel_llm_action: LlmAction,
