@@ -76,6 +76,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         View::DocEdit => forms::draw_doc_edit(frame, main_area, app),
         View::Config => config_panel::draw(frame, main_area, app),
         View::GlobalSearch => global_search::draw(frame, main_area, app),
+        View::InitProject => forms::draw_init_project(frame, main_area, app),
     }
 
     // Draw status bar

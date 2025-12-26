@@ -58,7 +58,8 @@ pub fn get_local_actions(view: &View) -> Vec<LocalAction> {
         | View::PrCreate
         | View::PrEdit
         | View::DocCreate
-        | View::DocEdit => vec![],
+        | View::DocEdit
+        | View::InitProject => vec![],
     }
 }
 
@@ -74,5 +75,6 @@ pub fn should_show_sidebar(view: &View) -> bool {
             | View::PrEdit
             | View::DocCreate
             | View::DocEdit
+            | View::InitProject
     )
 }

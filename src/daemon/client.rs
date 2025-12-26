@@ -398,6 +398,29 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Initialize a project (creates .centy folder)
+    pub async fn init_project(&mut self, project_path: &str, force: bool) -> Result<()> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::InitRequest {
+            project_path: project_path.to_string(),
+            force,
+            decisions: None,
+        });
+
+        let response = client
+            .init(request)
+            .await
+            .map_err(|e| anyhow!("Failed to initialize project: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.success {
+            return Err(anyhow!("{}", inner.error));
+        }
+
+        Ok(())
+    }
+
     /// Create a new issue
     pub async fn create_issue(
         &mut self,

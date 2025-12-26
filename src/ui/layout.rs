@@ -165,7 +165,7 @@ fn get_view_hints(view: &View) -> String {
     match view {
         View::Splash => "Press any key to skip".to_string(),
         View::Projects => {
-            "h/j/k/l:nav  Enter:select  f:fav  a:archive  x:untrack  n:new".to_string()
+            "h/j/k/l:nav  Enter:select  i:init  f:fav  a:archive  x:untrack".to_string()
         }
         View::Organization => "j/k:nav  Tab:panel  Enter:open  p:projects  Esc:back".to_string(),
         View::Issues => {
@@ -185,5 +185,6 @@ fn get_view_hints(view: &View) -> String {
         View::GlobalSearch => {
             "Tab:focus  j/k:nav  Enter:search/select  ^F:filter  Esc:back".to_string()
         }
+        View::InitProject => format!("Enter:init  Tab:actions  {}  Esc:cancel", SAVE_HINT),
     }
 }
