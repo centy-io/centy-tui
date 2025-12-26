@@ -555,6 +555,7 @@ pub enum ActionCategory {
     Mode,     // Plan, Implement (LLM actions)
     Status,   // Status/state changes
     External, // Open in VSCode, external tools
+    Research, // Research/deep dive actions
 }
 
 impl ActionCategory {
@@ -564,6 +565,7 @@ impl ActionCategory {
             2 => Self::Mode,
             3 => Self::Status,
             4 => Self::External,
+            5 => Self::Research,
             _ => Self::Unspecified,
         }
     }
@@ -575,6 +577,7 @@ impl ActionCategory {
             Self::Mode => "Mode",
             Self::Status => "Status",
             Self::External => "External",
+            Self::Research => "Research",
         }
     }
 }
@@ -606,6 +609,7 @@ impl EntityActionsResponse {
         let categories = [
             ActionCategory::Crud,
             ActionCategory::Mode,
+            ActionCategory::Research,
             ActionCategory::Status,
             ActionCategory::External,
             ActionCategory::Unspecified,
@@ -715,6 +719,13 @@ pub struct PendingMoveAction {
     pub target_project_path: Option<String>,
 }
 
+/// Pending start work action state (status change confirmation)
+#[derive(Debug, Clone)]
+pub struct PendingStartWorkAction {
+    pub action_id: String,
+    pub action_label: String,
+}
+
 /// Main application state
 #[derive(Default)]
 pub struct AppState {
@@ -762,6 +773,8 @@ pub struct AppState {
     pub pending_worktree_action: Option<PendingWorktreeAction>,
     /// Pending move action when moving an issue or doc
     pub pending_move_action: Option<PendingMoveAction>,
+    /// Pending start work action when confirming status change to "in progress"
+    pub pending_start_work_action: Option<PendingStartWorkAction>,
     /// Queue of error messages to display one at a time
     pub error_queue: VecDeque<String>,
 

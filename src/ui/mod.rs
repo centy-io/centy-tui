@@ -107,6 +107,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         components::render_move_dialog(frame, action, &targets);
     }
 
+    // Draw start work dialog (on top of everything except error)
+    if let Some(ref action) = app.state.pending_start_work_action {
+        components::render_start_work_dialog(frame, action);
+    }
+
     // Draw error dialog last (on top of everything)
     if let Some(error_msg) = app.state.current_error() {
         components::render_error_dialog(frame, error_msg);
@@ -324,6 +329,7 @@ fn get_category_color(category: ActionCategory, destructive: bool) -> Color {
     match category {
         ActionCategory::Crud => Color::Green,
         ActionCategory::Mode => Color::Yellow,
+        ActionCategory::Research => Color::Magenta,
         ActionCategory::Status => Color::Cyan,
         ActionCategory::External => Color::White,
         ActionCategory::Unspecified => Color::White,
