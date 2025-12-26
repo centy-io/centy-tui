@@ -260,6 +260,29 @@ fn build_breadcrumbs(app: &App) -> Vec<(String, View)> {
             }
             breadcrumbs.push(("Edit".to_string(), View::DocEdit));
         }
+        View::People => {
+            if let Some(project) = project_info {
+                add_org_project_breadcrumbs(&mut breadcrumbs, project);
+            }
+            breadcrumbs.push(("People".to_string(), View::People));
+        }
+        View::PersonDetail => {
+            if let Some(project) = project_info {
+                add_org_project_breadcrumbs(&mut breadcrumbs, project);
+            }
+            breadcrumbs.push(("People".to_string(), View::People));
+
+            // Add person name
+            if let Some(person) = app.state.selected_person_id.as_ref().and_then(|id| {
+                app.state
+                    .sorted_people()
+                    .into_iter()
+                    .find(|u| &u.id == id)
+                    .cloned()
+            }) {
+                breadcrumbs.push((person.name, View::PersonDetail));
+            }
+        }
         View::Config => {
             if let Some(project) = project_info {
                 add_org_project_breadcrumbs(&mut breadcrumbs, project);

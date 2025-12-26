@@ -994,6 +994,12 @@ impl DaemonClient {
                 name: u.name,
                 email: u.email,
                 git_usernames: u.git_usernames,
+                // Contribution stats - default values, can be computed client-side
+                role: None,
+                commit_count: 0,
+                issues_assigned: 0,
+                issues_created: 0,
+                prs_created: 0,
             })
             .collect();
 

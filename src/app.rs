@@ -4,9 +4,9 @@ use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
     IssuesListFocus, LlmAction, LogoStyle, MoveEntityType, OrganizationFocus, PendingMoveAction,
-    PendingStartWorkAction, PendingWorktreeAction, PrDetailFocus, PressedButton, Project,
-    PrsListFocus, ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams,
-    WorktreeDialogOption,
+    PendingStartWorkAction, PendingWorktreeAction, PeopleListFocus, PersonDetailFocus,
+    PrDetailFocus, PressedButton, Project, PrsListFocus, ScreenBuffer, ScreenPos, SplashState,
+    UiArea, View, ViewParams, WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -306,6 +306,8 @@ impl App {
             View::DocDetail => self.handle_doc_detail_key(key).await?,
             View::DocCreate => self.handle_doc_create_key(key).await?,
             View::DocEdit => self.handle_doc_edit_key(key).await?,
+            View::People => self.handle_people_key(key).await?,
+            View::PersonDetail => self.handle_person_detail_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
         }
 
@@ -465,6 +467,12 @@ impl App {
             KeyCode::Char('5') => {
                 if self.state.selected_project_path.is_some() {
                     self.state.sidebar_index = 4;
+                    self.navigate(View::People, ViewParams::default());
+                }
+            }
+            KeyCode::Char('6') => {
+                if self.state.selected_project_path.is_some() {
+                    self.state.sidebar_index = 5;
                     self.navigate(View::Config, ViewParams::default());
                 }
             }
@@ -631,6 +639,22 @@ impl App {
             KeyCode::Char('a') => {
                 self.state.show_closed_issues = !self.state.show_closed_issues;
                 self.state.reset_selection();
+            }
+            // Navigation to other views
+            KeyCode::Char('3') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Prs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('4') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Docs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('5') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::People, ViewParams::default());
+                }
             }
             KeyCode::Esc | KeyCode::Backspace => {
                 // Reset focus state when leaving
@@ -1536,6 +1560,22 @@ impl App {
                 self.state.show_merged_prs = !self.state.show_merged_prs;
                 self.state.reset_selection();
             }
+            // Navigation to other views
+            KeyCode::Char('2') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Issues, ViewParams::default());
+                }
+            }
+            KeyCode::Char('4') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Docs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('5') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::People, ViewParams::default());
+                }
+            }
             KeyCode::Esc | KeyCode::Backspace => {
                 // Reset focus state when leaving
                 self.state.prs_list_focus = PrsListFocus::List;
@@ -1781,6 +1821,22 @@ impl App {
                             },
                         );
                     }
+                }
+            }
+            // Navigation to other views
+            KeyCode::Char('2') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Issues, ViewParams::default());
+                }
+            }
+            KeyCode::Char('3') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Prs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('5') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::People, ViewParams::default());
                 }
             }
             KeyCode::Esc | KeyCode::Backspace => {
@@ -2056,6 +2112,149 @@ impl App {
                 self.push_error(format!("Failed to update doc: {}", e));
             }
         }
+    }
+
+    /// Handle keys in People view
+    async fn handle_people_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check for dynamic action shortcut first (when focused on list)
+        if matches!(self.state.people_list_focus, PeopleListFocus::List) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
+
+        match key.code {
+            // Tab: Switch focus between list and action panel
+            KeyCode::Tab => {
+                self.state.people_list_focus.toggle();
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.people_list_focus, PeopleListFocus::List) {
+                    self.state
+                        .move_selection_down(self.state.sorted_people().len());
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.people_list_focus, PeopleListFocus::List) {
+                    self.state.move_selection_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            KeyCode::Enter => {
+                if matches!(self.state.people_list_focus, PeopleListFocus::ActionPanel) {
+                    self.execute_selected_dynamic_action().await?;
+                } else {
+                    // Open person detail
+                    let sorted_people = self.state.sorted_people();
+                    if let Some(person) = sorted_people.get(self.state.selected_index) {
+                        self.state.selected_person_id = Some(person.id.clone());
+                        self.state.scroll_offset = 0;
+                        self.navigate(View::PersonDetail, ViewParams::default());
+                    }
+                }
+            }
+            // Sort controls
+            KeyCode::Char('s') => {
+                self.state.cycle_people_sort_field();
+            }
+            KeyCode::Char('S') => {
+                self.state.toggle_people_sort_direction();
+            }
+            // Navigation to other views
+            KeyCode::Char('2') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Issues, ViewParams::default());
+                }
+            }
+            KeyCode::Char('3') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Prs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('4') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Docs, ViewParams::default());
+                }
+            }
+            KeyCode::Esc | KeyCode::Backspace => {
+                // Reset focus state when leaving
+                self.state.people_list_focus = PeopleListFocus::List;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in Person Detail view
+    async fn handle_person_detail_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check for dynamic action shortcut first (when focused on content)
+        if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
+
+        match key.code {
+            // Tab: Switch focus between content and action panel
+            KeyCode::Tab => {
+                self.state.person_detail_focus.toggle();
+            }
+            // Navigation (j/k/Up/Down)
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_down();
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            KeyCode::Char('d') | KeyCode::PageDown => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_down_page();
+                }
+            }
+            KeyCode::Char('u') | KeyCode::PageUp => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_up_page();
+                }
+            }
+            // Execute action (Enter when action panel is focused)
+            KeyCode::Enter => {
+                if matches!(
+                    self.state.person_detail_focus,
+                    PersonDetailFocus::ActionPanel
+                ) {
+                    self.execute_selected_dynamic_action().await?;
+                }
+            }
+            // Go back (also reset focus and action panel index)
+            KeyCode::Esc | KeyCode::Backspace => {
+                self.state.person_detail_focus = PersonDetailFocus::Content;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Handle keys in Config view
@@ -2646,6 +2845,11 @@ impl App {
             View::Docs => self.handle_list_mouse(mouse, self.state.docs.len()).await?,
             View::DocDetail => self.handle_scroll_mouse(mouse).await?,
             View::DocCreate | View::DocEdit => self.handle_form_mouse(mouse).await?,
+            View::People => {
+                let len = self.state.sorted_people().len();
+                self.handle_list_mouse(mouse, len).await?
+            }
+            View::PersonDetail => self.handle_scroll_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
         }
 
@@ -2767,6 +2971,9 @@ impl App {
             }
             "nav_docs" => {
                 self.navigate(View::Docs, ViewParams::default());
+            }
+            "nav_people" => {
+                self.navigate(View::People, ViewParams::default());
             }
             "nav_projects" => {
                 self.navigate(View::Projects, ViewParams::default());
