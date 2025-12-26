@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 /// Draw the issues list
-pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
+pub fn draw_list(frame: &mut Frame, area: Rect, app: &mut App) {
     // Split area into content (left) and action panel (right)
     let h_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -30,7 +30,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the issues list content (left side)
-fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &mut App) {
     let sorted_issues = app.state.sorted_issues();
     let project_name = app
         .state
@@ -148,7 +148,8 @@ fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(border_color)),
     );
 
-    render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
+    app.state.list_scroll_offset =
+        render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
 }
 
 /// Draw the issues list daemon actions (right side)

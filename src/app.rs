@@ -2692,6 +2692,10 @@ impl App {
                         self.state.sidebar_scroll_offset.saturating_sub(1);
                 } else {
                     self.state.move_selection_up();
+                    // Update list scroll offset to keep in sync with selected_index
+                    if self.state.selected_index < self.state.list_scroll_offset {
+                        self.state.list_scroll_offset = self.state.selected_index;
+                    }
                 }
             }
             MouseEventKind::ScrollDown => {
@@ -2703,6 +2707,21 @@ impl App {
                     }
                 } else {
                     self.state.move_selection_down(list_len);
+                    // Update list scroll offset to keep in sync with selected_index
+                    let terminal_height = self.terminal_size.map(|(h, _)| h).unwrap_or(24) as usize;
+                    let list_start_row = match self.state.current_view {
+                        View::Issues | View::Prs => 6,
+                        View::Docs => 4,
+                        _ => UiArea::ListContent.start_y() as usize,
+                    };
+                    let visible_height = terminal_height.saturating_sub(list_start_row + 2);
+                    if visible_height > 0
+                        && self.state.selected_index
+                            >= self.state.list_scroll_offset + visible_height
+                    {
+                        self.state.list_scroll_offset =
+                            self.state.selected_index - visible_height + 1;
+                    }
                 }
             }
             MouseEventKind::Down(MouseButton::Left) => {
@@ -2735,7 +2754,36 @@ impl App {
 
                 if mouse.column >= main_area_start_x && UiArea::ListContent.contains_row(mouse.row)
                 {
-                    let clicked_index = UiArea::ListContent.relative_row(mouse.row) as usize;
+                    // Calculate list start row based on view
+                    // Issues/PRs have a 2-row header, Docs doesn't
+                    // Layout: context bar (3) + header (2 for Issues/PRs, 0 for Docs) + top border (1)
+                    let list_start_row = match self.state.current_view {
+                        View::Issues | View::Prs => 6, // context bar (3) + header (2) + border (1)
+                        View::Docs => 4,               // context bar (3) + border (1), no header
+                        _ => UiArea::ListContent.start_y() as usize,
+                    };
+
+                    // Only process if click is in the list area
+                    if (mouse.row as usize) < list_start_row {
+                        return Ok(());
+                    }
+
+                    // Calculate visible height for list items
+                    let terminal_height = self.terminal_size.map(|(h, _)| h).unwrap_or(24) as usize;
+                    let visible_height = terminal_height.saturating_sub(list_start_row + 2); // -2 for status bar + bottom border
+
+                    // Calculate scroll offset: ratatui keeps selected item visible
+                    let scroll_offset = if visible_height > 0 {
+                        let min_offset =
+                            self.state.selected_index.saturating_sub(visible_height - 1);
+                        let max_offset = self.state.selected_index;
+                        self.state.list_scroll_offset.clamp(min_offset, max_offset)
+                    } else {
+                        0
+                    };
+
+                    let relative_row = (mouse.row as usize).saturating_sub(list_start_row);
+                    let clicked_index = relative_row + scroll_offset;
                     if clicked_index < list_len {
                         // Check for double-click: same index clicked within 400ms
                         let is_double_click = self

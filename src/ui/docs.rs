@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 /// Draw the docs list
-pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
+pub fn draw_list(frame: &mut Frame, area: Rect, app: &mut App) {
     // Split area into content (left) and action panel (right)
     let h_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -31,7 +31,7 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the docs list content (left side)
-fn draw_docs_list_content(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_docs_list_content(frame: &mut Frame, area: Rect, app: &mut App) {
     // Border color based on focus
     let border_color = match app.state.docs_list_focus {
         DocsListFocus::List => Color::Cyan,
@@ -90,7 +90,8 @@ fn draw_docs_list_content(frame: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(border_color)),
     );
 
-    render_scrollable_list(frame, area, list, app.state.selected_index);
+    app.state.list_scroll_offset =
+        render_scrollable_list(frame, area, list, app.state.selected_index);
 }
 
 /// Draw doc detail view

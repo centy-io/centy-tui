@@ -641,6 +641,8 @@ pub struct AppState {
 
     // UI state
     pub scroll_offset: usize,
+    /// List scroll offset for Issues/PRs/Docs views (for mouse click calculations)
+    pub list_scroll_offset: usize,
     /// Scroll offset for sidebars (nav sidebar and action panel share this)
     pub sidebar_scroll_offset: usize,
     pub daemon_connected: bool,
@@ -895,6 +897,7 @@ impl AppState {
     pub fn reset_selection(&mut self) {
         self.selected_index = 0;
         self.scroll_offset = 0;
+        self.list_scroll_offset = 0;
     }
 
     /// Calculate the Y position of a project card given its index and grid columns
