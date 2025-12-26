@@ -106,6 +106,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         components::render_move_dialog(frame, action, &targets);
     }
 
+    // Draw confirm delete dialog (on top of everything except error)
+    if let Some(ref action) = app.state.pending_delete_action {
+        components::render_confirm_dialog(frame, action);
+    }
+
     // Draw error dialog last (on top of everything)
     if let Some(error_msg) = app.state.current_error() {
         components::render_error_dialog(frame, error_msg);

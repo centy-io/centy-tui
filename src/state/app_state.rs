@@ -770,6 +770,27 @@ pub struct PendingMoveAction {
     pub target_project_path: Option<String>,
 }
 
+/// Entity type for delete operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum DeleteEntityType {
+    Issue,
+    Pr,
+    Doc,
+}
+
+/// Pending delete action state (confirmation dialog)
+#[derive(Debug, Clone)]
+pub struct PendingDeleteAction {
+    pub entity_type: DeleteEntityType,
+    pub project_path: String,
+    pub entity_id: String,
+    pub entity_number: u32,
+    pub entity_display: String,
+    /// Selected option: false = Cancel, true = Delete
+    pub selected_option: bool,
+}
+
 /// Main application state
 #[derive(Default)]
 pub struct AppState {
@@ -819,6 +840,8 @@ pub struct AppState {
     pub pending_worktree_action: Option<PendingWorktreeAction>,
     /// Pending move action when moving an issue or doc
     pub pending_move_action: Option<PendingMoveAction>,
+    /// Pending delete action when deleting an entity
+    pub pending_delete_action: Option<PendingDeleteAction>,
     /// Queue of error messages to display one at a time
     pub error_queue: VecDeque<String>,
 

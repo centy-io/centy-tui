@@ -2,10 +2,11 @@
 
 use crate::daemon::DaemonClient;
 use crate::state::{
-    AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
-    IssuesListFocus, ListScope, LlmAction, LogoStyle, MoveEntityType, OrganizationFocus,
-    PendingMoveAction, PendingWorktreeAction, PrDetailFocus, PressedButton, Project, PrsListFocus,
-    ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams, WorktreeDialogOption,
+    AppState, ButtonPressState, DeleteEntityType, DocDetailFocus, DocsListFocus, EntityType,
+    IssueDetailFocus, IssuesListFocus, ListScope, LlmAction, LogoStyle, MoveEntityType,
+    OrganizationFocus, PendingDeleteAction, PendingMoveAction, PendingWorktreeAction,
+    PrDetailFocus, PressedButton, Project, PrsListFocus, ScreenBuffer, ScreenPos, SplashState,
+    UiArea, View, ViewParams, WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -258,6 +259,12 @@ impl App {
         // Handle move dialog (modal)
         if self.state.pending_move_action.is_some() {
             self.handle_move_dialog_key(key).await?;
+            return Ok(());
+        }
+
+        // Handle confirm delete dialog (modal)
+        if self.state.pending_delete_action.is_some() {
+            self.handle_confirm_dialog_key(key).await?;
             return Ok(());
         }
 
@@ -659,35 +666,59 @@ impl App {
         Ok(())
     }
 
-    /// Delete the selected issue from the issues list
-    async fn delete_selected_issue(&mut self) -> Result<()> {
+    /// Show confirmation dialog before deleting the selected issue
+    fn show_delete_issue_confirmation(&mut self) {
         let project_path = match &self.state.selected_project_path {
             Some(path) => path.clone(),
             None => {
                 self.push_error("No project selected");
-                return Ok(());
+                return;
             }
         };
 
-        // Get the selected issue ID from the sorted list
-        let issue_id = {
+        // Get the selected issue from the sorted list
+        let issue_info = {
             let sorted = self.state.sorted_issues();
-            sorted.get(self.state.selected_index).map(|i| i.id.clone())
+            sorted
+                .get(self.state.selected_index)
+                .map(|i| (i.id.clone(), i.display_number, i.title.clone()))
         };
 
-        let issue_id = match issue_id {
-            Some(id) => id,
+        let (issue_id, display_number, title) = match issue_info {
+            Some(info) => info,
             None => {
                 self.push_error("No issue selected");
-                return Ok(());
+                return;
             }
+        };
+
+        // Show confirmation dialog
+        self.state.pending_delete_action = Some(PendingDeleteAction {
+            entity_type: DeleteEntityType::Issue,
+            project_path,
+            entity_id: issue_id,
+            entity_number: display_number,
+            entity_display: title,
+            selected_option: false, // Default to Cancel
+        });
+    }
+
+    /// Actually delete the issue after confirmation
+    async fn confirm_delete_issue(&mut self) -> Result<()> {
+        let action = match self.state.pending_delete_action.take() {
+            Some(a) => a,
+            None => return Ok(()),
         };
 
         // Delete the issue
-        match self.daemon.delete_issue(&project_path, &issue_id).await {
+        match self
+            .daemon
+            .delete_issue(&action.project_path, &action.entity_id)
+            .await
+        {
             Ok(_) => {
                 // Refresh issues list
-                if let Ok(issues) = self.daemon.list_issues(&project_path).await {
+                if let Ok(issues) = self.daemon.list_issues(&action.project_path).await {
                     self.state.issues = issues;
                     // Adjust selection if needed
                     let max = self.state.sorted_issues().len();
@@ -1207,7 +1238,7 @@ impl App {
             // Delete action - contextual based on current view
             "delete" => match self.state.current_view {
                 View::Issues | View::IssueDetail => {
-                    self.delete_selected_issue().await?;
+                    self.show_delete_issue_confirmation();
                 }
                 View::Prs | View::PrDetail => {
                     self.push_error("Delete PR: Not yet implemented");
@@ -2558,6 +2589,50 @@ impl App {
                                 );
                             }
                         }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys for the confirm delete dialog
+    async fn handle_confirm_dialog_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            // Cancel - dismiss dialog
+            KeyCode::Esc => {
+                self.state.pending_delete_action = None;
+            }
+            // Navigate between options (Cancel / Delete)
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => {
+                if let Some(ref mut action) = self.state.pending_delete_action {
+                    action.selected_option = !action.selected_option;
+                }
+            }
+            // Confirm selection
+            KeyCode::Enter => {
+                if let Some(ref action) = self.state.pending_delete_action {
+                    if action.selected_option {
+                        // Delete confirmed
+                        match action.entity_type {
+                            DeleteEntityType::Issue => {
+                                self.confirm_delete_issue().await?;
+                            }
+                            DeleteEntityType::Pr => {
+                                // TODO: Implement PR deletion
+                                self.state.pending_delete_action = None;
+                                self.push_error("Delete PR: Not yet implemented");
+                            }
+                            DeleteEntityType::Doc => {
+                                // TODO: Implement Doc deletion
+                                self.state.pending_delete_action = None;
+                                self.push_error("Delete doc: Not yet implemented");
+                            }
+                        }
+                    } else {
+                        // Cancel selected
+                        self.state.pending_delete_action = None;
                     }
                 }
             }
