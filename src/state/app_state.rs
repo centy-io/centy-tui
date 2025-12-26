@@ -32,6 +32,7 @@ pub enum View {
     DocCreate,
     DocEdit,
     Config,
+    InitProject,
 }
 
 impl View {
@@ -45,6 +46,7 @@ impl View {
                 | View::PrEdit
                 | View::DocCreate
                 | View::DocEdit
+                | View::InitProject
         )
     }
 }
@@ -743,6 +745,8 @@ pub struct AppState {
     pub form_target_branch: String,
     /// Selected button index for create forms (0=Cancel, 1=Draft, 2=Create&New, 3=Create)
     pub form_selected_button: usize,
+    /// Project path for init project form
+    pub form_project_path: String,
 
     // Text selection state
     pub selection: SelectionState,
@@ -1195,6 +1199,7 @@ impl AppState {
             View::PrEdit => 6,      // title, description, source, target, priority, status
             View::DocCreate => 3,   // title, content, slug
             View::DocEdit => 3,     // title, content, slug
+            View::InitProject => 2, // project_path, buttons
             _ => 1,
         }
     }
@@ -1299,6 +1304,7 @@ impl AppState {
         self.form_source_branch.clear();
         self.form_target_branch.clear();
         self.form_selected_button = 0; // Default to "Create" button (first in sidebar)
+        self.form_project_path.clear();
     }
 
     /// Load issue data into form for editing

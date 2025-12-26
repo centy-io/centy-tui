@@ -300,6 +300,7 @@ impl App {
             View::DocCreate => self.handle_doc_create_key(key).await?,
             View::DocEdit => self.handle_doc_edit_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
+            View::InitProject => self.handle_init_project_key(key).await?,
         }
 
         // Refresh actions if view changed to one that shows action panel
@@ -432,6 +433,22 @@ impl App {
             }
             KeyCode::Char('x') => {
                 self.state.confirm_action = Some("untrack".to_string());
+            }
+            KeyCode::Char('i') => {
+                // Open Init Project form
+                // If an uninitialized project is selected, pre-fill the path
+                let project_path = self
+                    .state
+                    .selectable_projects()
+                    .get(self.state.selected_index)
+                    .filter(|p| !p.initialized)
+                    .map(|p| p.path.clone());
+
+                self.state.clear_form();
+                if let Some(path) = project_path {
+                    self.state.form_project_path = path;
+                }
+                self.navigate(View::InitProject, ViewParams::default());
             }
             KeyCode::Char('n') => {
                 self.navigate(View::Projects, ViewParams::default());
@@ -2041,6 +2058,104 @@ impl App {
         Ok(())
     }
 
+    /// Handle keys in Init Project view
+    async fn handle_init_project_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check if we're on the action panel (field 1)
+        let on_action_panel = self.state.active_form_field == 1;
+
+        match key.code {
+            KeyCode::Tab => self.state.next_form_field(),
+            KeyCode::BackTab => self.state.prev_form_field(),
+            // Up/Down for action panel navigation
+            KeyCode::Up | KeyCode::Char('k') if on_action_panel => {
+                if self.state.form_selected_button == 0 {
+                    self.state.form_selected_button = 1;
+                } else {
+                    self.state.form_selected_button -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') if on_action_panel => {
+                self.state.form_selected_button = (self.state.form_selected_button + 1) % 2;
+            }
+            // Enter triggers the selected button (or Initialize if on path field)
+            KeyCode::Enter => {
+                if on_action_panel {
+                    match self.state.form_selected_button {
+                        0 => {
+                            // Initialize
+                            self.init_project().await;
+                        }
+                        1 => {
+                            // Cancel
+                            self.state.clear_form();
+                            self.go_back();
+                        }
+                        _ => {}
+                    }
+                } else {
+                    // Enter from path field also triggers init
+                    self.init_project().await;
+                }
+            }
+            // Keyboard shortcuts (work from anywhere)
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.init_project().await;
+            }
+            KeyCode::Char('w') if key.modifiers.contains(crate::platform::COPY_MODIFIER) => {
+                self.init_project().await;
+            }
+            KeyCode::Esc => {
+                self.state.clear_form();
+                self.go_back();
+            }
+            // Form field input (only when not on action panel)
+            KeyCode::Char(c) if !on_action_panel => {
+                self.state.form_project_path.push(c);
+            }
+            KeyCode::Backspace if !on_action_panel => {
+                self.state.form_project_path.pop();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Initialize a project
+    async fn init_project(&mut self) {
+        let project_path = self.state.form_project_path.trim().to_string();
+
+        if project_path.is_empty() {
+            self.push_error("Project path is required");
+            return;
+        }
+
+        // Expand ~ to home directory if present
+        let expanded_path = if let Some(stripped) = project_path.strip_prefix("~/") {
+            if let Ok(home) = std::env::var("HOME") {
+                format!("{}/{}", home, stripped)
+            } else {
+                project_path.clone()
+            }
+        } else {
+            project_path.clone()
+        };
+
+        match self.daemon.init_project(&expanded_path, true).await {
+            Ok(()) => {
+                // Refresh projects list
+                if let Ok(projects) = self.daemon.list_projects().await {
+                    self.state.projects = projects;
+                }
+                self.copy_message = Some("Project initialized!".to_string());
+                self.state.clear_form();
+                self.go_back();
+            }
+            Err(e) => {
+                self.push_error(format!("Failed to initialize project: {}", e));
+            }
+        }
+    }
+
     /// Handle keys for the worktree dialog
     async fn handle_worktree_dialog_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
@@ -2557,6 +2672,7 @@ impl App {
             View::DocDetail => self.handle_scroll_mouse(mouse).await?,
             View::DocCreate | View::DocEdit => self.handle_form_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
+            View::InitProject => self.handle_form_mouse(mouse).await?,
         }
 
         // Refresh actions if view changed to one that shows action panel
