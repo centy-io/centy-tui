@@ -32,6 +32,8 @@ pub enum View {
     DocCreate,
     DocEdit,
     Config,
+    /// Global search across all projects
+    GlobalSearch,
 }
 
 impl View {
@@ -266,6 +268,133 @@ impl OrganizationFocus {
             Self::ActionPanel => Self::ProjectsList,
         };
     }
+}
+
+/// Focus state for global search view
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlobalSearchFocus {
+    #[default]
+    SearchInput,
+    Results,
+}
+
+impl GlobalSearchFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::SearchInput => Self::Results,
+            Self::Results => Self::SearchInput,
+        };
+    }
+}
+
+/// Filter type for global search
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlobalSearchFilter {
+    #[default]
+    All,
+    Issues,
+    Prs,
+    Docs,
+}
+
+impl GlobalSearchFilter {
+    pub fn next(&self) -> Self {
+        match self {
+            Self::All => Self::Issues,
+            Self::Issues => Self::Prs,
+            Self::Prs => Self::Docs,
+            Self::Docs => Self::All,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::Issues => "Issues",
+            Self::Prs => "PRs",
+            Self::Docs => "Docs",
+        }
+    }
+}
+
+/// A search result with project context
+#[derive(Debug, Clone)]
+pub enum GlobalSearchResult {
+    Issue {
+        issue: Issue,
+        project_path: String,
+        project_name: String,
+    },
+    Pr {
+        pr: PullRequest,
+        project_path: String,
+        project_name: String,
+    },
+    Doc {
+        doc: Doc,
+        project_path: String,
+        project_name: String,
+    },
+}
+
+impl GlobalSearchResult {
+    pub fn project_name(&self) -> &str {
+        match self {
+            Self::Issue { project_name, .. } => project_name,
+            Self::Pr { project_name, .. } => project_name,
+            Self::Doc { project_name, .. } => project_name,
+        }
+    }
+
+    pub fn project_path(&self) -> &str {
+        match self {
+            Self::Issue { project_path, .. } => project_path,
+            Self::Pr { project_path, .. } => project_path,
+            Self::Doc { project_path, .. } => project_path,
+        }
+    }
+}
+
+/// Scope for list views (project vs organization)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListScope {
+    #[default]
+    Project,
+    Organization,
+}
+
+impl ListScope {
+    pub fn toggle(&self) -> Self {
+        match self {
+            Self::Project => Self::Organization,
+            Self::Organization => Self::Project,
+        }
+    }
+}
+
+/// Issue with project context for organization-level views
+#[derive(Debug, Clone)]
+pub struct OrgIssue {
+    pub issue: Issue,
+    #[allow(dead_code)]
+    pub project_path: String,
+    pub project_name: String,
+}
+
+/// PR with project context for organization-level views
+#[derive(Debug, Clone)]
+pub struct OrgPr {
+    pub pr: PullRequest,
+    pub project_path: String,
+    pub project_name: String,
+}
+
+/// Doc with project context for organization-level views
+#[derive(Debug, Clone)]
+pub struct OrgDoc {
+    pub doc: Doc,
+    pub project_path: String,
+    pub project_name: String,
 }
 
 /// LLM action type for agent operations (mirrors proto LlmAction)
@@ -718,6 +847,22 @@ pub struct AppState {
     pub organization_projects: Vec<Project>,
     pub project_users: HashMap<String, Vec<User>>,
     pub selected_project_in_org: usize,
+
+    // Global search state
+    pub global_search_query: String,
+    pub global_search_filter: GlobalSearchFilter,
+    pub global_search_results: Vec<GlobalSearchResult>,
+    pub global_search_selected: usize,
+    pub global_search_focus: GlobalSearchFocus,
+    pub global_search_loading: bool,
+
+    // List scope state (project vs organization)
+    pub issues_list_scope: ListScope,
+    pub prs_list_scope: ListScope,
+    pub docs_list_scope: ListScope,
+    pub org_issues: Vec<OrgIssue>,
+    pub org_prs: Vec<OrgPr>,
+    pub org_docs: Vec<OrgDoc>,
 
     // Dynamic actions state (from GetEntityActions)
     pub current_actions: EntityActionsResponse,
@@ -1173,6 +1318,90 @@ impl AppState {
         });
 
         prs
+    }
+
+    /// Get current organization slug from selected project
+    pub fn current_organization_slug(&self) -> Option<&str> {
+        self.selected_project_path
+            .as_ref()
+            .and_then(|p| self.projects.iter().find(|proj| &proj.path == p))
+            .and_then(|p| p.organization_slug.as_deref())
+    }
+
+    /// Get sorted org issues (for org scope view)
+    pub fn sorted_org_issues(&self) -> Vec<&OrgIssue> {
+        let mut issues: Vec<_> = self
+            .org_issues
+            .iter()
+            .filter(|oi| self.show_closed_issues || oi.issue.metadata.status != "closed")
+            .collect();
+
+        issues.sort_by(|a, b| {
+            let cmp = match self.issue_sort_field {
+                IssueSortField::Priority => {
+                    a.issue.metadata.priority.cmp(&b.issue.metadata.priority)
+                }
+                IssueSortField::DisplayNumber => {
+                    a.issue.display_number.cmp(&b.issue.display_number)
+                }
+                IssueSortField::CreatedAt => a
+                    .issue
+                    .metadata
+                    .created_at
+                    .cmp(&b.issue.metadata.created_at),
+                IssueSortField::UpdatedAt => a
+                    .issue
+                    .metadata
+                    .updated_at
+                    .cmp(&b.issue.metadata.updated_at),
+                IssueSortField::Status => a.issue.metadata.status.cmp(&b.issue.metadata.status),
+            };
+
+            match self.issue_sort_direction {
+                SortDirection::Asc => cmp,
+                SortDirection::Desc => cmp.reverse(),
+            }
+        });
+
+        issues
+    }
+
+    /// Get sorted org PRs (for org scope view)
+    pub fn sorted_org_prs(&self) -> Vec<&OrgPr> {
+        let mut prs: Vec<_> = self
+            .org_prs
+            .iter()
+            .filter(|op| {
+                self.show_merged_prs
+                    || (op.pr.metadata.status != "merged" && op.pr.metadata.status != "closed")
+            })
+            .collect();
+
+        prs.sort_by(|a, b| {
+            let cmp = match self.pr_sort_field {
+                PrSortField::Priority => a.pr.metadata.priority.cmp(&b.pr.metadata.priority),
+                PrSortField::DisplayNumber => a.pr.display_number.cmp(&b.pr.display_number),
+                PrSortField::CreatedAt => a.pr.metadata.created_at.cmp(&b.pr.metadata.created_at),
+                PrSortField::UpdatedAt => a.pr.metadata.updated_at.cmp(&b.pr.metadata.updated_at),
+                PrSortField::Status => a.pr.metadata.status.cmp(&b.pr.metadata.status),
+            };
+
+            match self.pr_sort_direction {
+                SortDirection::Asc => cmp,
+                SortDirection::Desc => cmp.reverse(),
+            }
+        });
+
+        prs
+    }
+
+    /// Get sorted org docs (for org scope view)
+    pub fn sorted_org_docs(&self) -> Vec<&OrgDoc> {
+        let mut docs: Vec<_> = self.org_docs.iter().collect();
+
+        docs.sort_by(|a, b| a.doc.title.cmp(&b.doc.title));
+
+        docs
     }
 
     /// Move to next form field

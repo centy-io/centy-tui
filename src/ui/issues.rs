@@ -2,7 +2,7 @@
 
 use super::render_scrollable_list;
 use crate::app::App;
-use crate::state::{IssueDetailFocus, IssuesListFocus};
+use crate::state::{IssueDetailFocus, IssuesListFocus, ListScope};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -31,13 +31,19 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &mut App) {
 
 /// Draw the issues list content (left side)
 fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &mut App) {
-    let sorted_issues = app.state.sorted_issues();
-    let project_name = app
-        .state
-        .selected_project_path
-        .as_ref()
-        .and_then(|p| p.split('/').next_back())
-        .unwrap_or("Project");
+    let is_org_scope = matches!(app.state.issues_list_scope, ListScope::Organization);
+
+    let title = if is_org_scope {
+        " Issues - Org ".to_string()
+    } else {
+        let project_name = app
+            .state
+            .selected_project_path
+            .as_ref()
+            .and_then(|p| p.split('/').next_back())
+            .unwrap_or("Project");
+        format!(" Issues - {} ", project_name)
+    };
 
     // Border color based on focus
     let border_color = match app.state.issues_list_focus {
@@ -52,33 +58,25 @@ fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &mut App) {
         app.state.issue_sort_direction.symbol()
     );
 
-    let closed_count = app
-        .state
-        .issues
-        .iter()
-        .filter(|i| i.metadata.status == "closed")
-        .count();
-    let filter_label = if closed_count > 0 {
-        if app.state.show_closed_issues {
-            format!("({} closed)", closed_count)
-        } else {
-            format!("(hiding {} closed)", closed_count)
-        }
+    let scope_label = if is_org_scope {
+        "[Org]".to_string()
     } else {
         String::new()
     };
 
-    if sorted_issues.is_empty() {
-        let message = if !app.state.show_closed_issues && closed_count > 0 {
-            "No open issues. Press 'a' to show all issues.\nPress 'n' to create a new issue."
-        } else {
-            "No issues found.\nPress 'n' to create a new issue."
-        };
+    let item_count = if is_org_scope {
+        app.state.sorted_org_issues().len()
+    } else {
+        app.state.sorted_issues().len()
+    };
+
+    if item_count == 0 {
+        let message = "No issues found.\nPress 'n' to create a new issue.";
         let content = Paragraph::new(message)
             .style(Style::default().fg(Color::DarkGray))
             .block(
                 Block::default()
-                    .title(format!(" Issues - {} ", project_name))
+                    .title(title)
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color)),
             );
@@ -92,58 +90,116 @@ fn draw_issues_list_content(frame: &mut Frame, area: Rect, app: &mut App) {
         .constraints([Constraint::Length(2), Constraint::Min(0)])
         .split(area);
 
-    // Draw header
-    let header = Paragraph::new(Line::from(vec![
+    // Draw header with scope indicator
+    let mut header_spans = vec![
         Span::styled(sort_label, Style::default().fg(Color::Cyan)),
         Span::styled(" [s]cycle [S]dir", Style::default().fg(Color::DarkGray)),
-        Span::raw(" | "),
-        Span::styled(filter_label, Style::default().fg(Color::DarkGray)),
-        Span::styled(" [a]toggle", Style::default().fg(Color::DarkGray)),
-    ]));
+    ];
+    if !scope_label.is_empty() {
+        header_spans.push(Span::raw(" | "));
+        header_spans.push(Span::styled(
+            scope_label,
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+    header_spans.push(Span::styled(
+        " [o]scope",
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    let header = Paragraph::new(Line::from(header_spans));
     frame.render_widget(header, chunks[0]);
 
-    // Draw list
-    let items: Vec<ListItem> = sorted_issues
-        .iter()
-        .enumerate()
-        .map(|(idx, issue)| {
-            let is_selected = idx == app.state.selected_index;
+    // Draw list - handle both scopes
+    let items: Vec<ListItem> = if is_org_scope {
+        app.state
+            .sorted_org_issues()
+            .iter()
+            .enumerate()
+            .map(|(idx, org_issue)| {
+                let issue = &org_issue.issue;
+                let is_selected = idx == app.state.selected_index;
 
-            let prefix = if is_selected { "▸" } else { " " };
-            let number = format!("#{}", issue.display_number);
-            let priority_label = format!("[{}]", issue.priority_label());
-            let status_label = format!("[{}]", issue.metadata.status);
+                let prefix = if is_selected { "▸" } else { " " };
+                let number = format!("#{}", issue.display_number);
+                let priority_label = format!("[{}]", issue.priority_label());
+                let status_label = format!("[{}]", issue.metadata.status);
 
-            let priority_color = match issue.metadata.priority {
-                1 => Color::Red,
-                2 => Color::Yellow,
-                _ => Color::Green,
-            };
+                let priority_color = match issue.metadata.priority {
+                    1 => Color::Red,
+                    2 => Color::Yellow,
+                    _ => Color::Green,
+                };
 
-            let style = if is_selected {
-                Style::default().bg(Color::DarkGray)
-            } else {
-                Style::default()
-            };
+                let style = if is_selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
 
-            let line = Line::from(vec![
-                Span::styled(prefix, style),
-                Span::styled(number, Style::default().fg(Color::Cyan)),
-                Span::raw(" "),
-                Span::styled(priority_label, Style::default().fg(priority_color)),
-                Span::raw(" "),
-                Span::styled(status_label, Style::default().fg(Color::DarkGray)),
-                Span::raw(" "),
-                Span::styled(&issue.title, style),
-            ]);
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(number, Style::default().fg(Color::Cyan)),
+                    Span::raw(" "),
+                    Span::styled(priority_label, Style::default().fg(priority_color)),
+                    Span::raw(" "),
+                    Span::styled(status_label, Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled(&issue.title, style),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("[{}]", org_issue.project_name),
+                        Style::default().fg(Color::Blue),
+                    ),
+                ]);
 
-            ListItem::new(line)
-        })
-        .collect();
+                ListItem::new(line)
+            })
+            .collect()
+    } else {
+        app.state
+            .sorted_issues()
+            .iter()
+            .enumerate()
+            .map(|(idx, issue)| {
+                let is_selected = idx == app.state.selected_index;
+
+                let prefix = if is_selected { "▸" } else { " " };
+                let number = format!("#{}", issue.display_number);
+                let priority_label = format!("[{}]", issue.priority_label());
+                let status_label = format!("[{}]", issue.metadata.status);
+
+                let priority_color = match issue.metadata.priority {
+                    1 => Color::Red,
+                    2 => Color::Yellow,
+                    _ => Color::Green,
+                };
+
+                let style = if is_selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(number, Style::default().fg(Color::Cyan)),
+                    Span::raw(" "),
+                    Span::styled(priority_label, Style::default().fg(priority_color)),
+                    Span::raw(" "),
+                    Span::styled(status_label, Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled(&issue.title, style),
+                ]);
+
+                ListItem::new(line)
+            })
+            .collect()
+    };
 
     let list = List::new(items).block(
         Block::default()
-            .title(format!(" Issues - {} ", project_name))
+            .title(title)
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color)),
     );

@@ -3,9 +3,9 @@
 use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
-    IssuesListFocus, LlmAction, LogoStyle, MoveEntityType, OrganizationFocus, PendingMoveAction,
-    PendingWorktreeAction, PrDetailFocus, PressedButton, Project, PrsListFocus, ScreenBuffer,
-    ScreenPos, SplashState, UiArea, View, ViewParams, WorktreeDialogOption,
+    IssuesListFocus, ListScope, LlmAction, LogoStyle, MoveEntityType, OrganizationFocus,
+    PendingMoveAction, PendingWorktreeAction, PrDetailFocus, PressedButton, Project, PrsListFocus,
+    ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams, WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -280,6 +280,16 @@ impl App {
             self.state.selection.clear();
         }
 
+        // Global search shortcut (/) - only from non-form views
+        if key.code == KeyCode::Char('/')
+            && !self.state.current_view.is_form_view()
+            && !matches!(self.state.current_view, View::GlobalSearch | View::Splash)
+        {
+            self.state.global_search_focus = crate::state::GlobalSearchFocus::SearchInput;
+            self.navigate(View::GlobalSearch, ViewParams::default());
+            return Ok(());
+        }
+
         // Track view before handling key to detect navigation
         let view_before = self.state.current_view.clone();
 
@@ -300,6 +310,7 @@ impl App {
             View::DocCreate => self.handle_doc_create_key(key).await?,
             View::DocEdit => self.handle_doc_edit_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
+            View::GlobalSearch => self.handle_global_search_key(key).await?,
         }
 
         // Refresh actions if view changed to one that shows action panel
@@ -624,6 +635,18 @@ impl App {
             KeyCode::Char('a') => {
                 self.state.show_closed_issues = !self.state.show_closed_issues;
                 self.state.reset_selection();
+            }
+            KeyCode::Char('o') => {
+                // Toggle org scope
+                self.state.issues_list_scope = self.state.issues_list_scope.toggle();
+                self.state.reset_selection();
+                // Load org issues if switching to org scope
+                if matches!(
+                    self.state.issues_list_scope,
+                    crate::state::ListScope::Organization
+                ) {
+                    self.load_org_issues().await?;
+                }
             }
             KeyCode::Esc | KeyCode::Backspace => {
                 // Reset focus state when leaving
@@ -1465,8 +1488,12 @@ impl App {
             }
             KeyCode::Char('j') | KeyCode::Down => {
                 if matches!(self.state.prs_list_focus, PrsListFocus::List) {
-                    self.state
-                        .move_selection_down(self.state.sorted_prs().len());
+                    let count = if matches!(self.state.prs_list_scope, ListScope::Organization) {
+                        self.state.sorted_org_prs().len()
+                    } else {
+                        self.state.sorted_prs().len()
+                    };
+                    self.state.move_selection_down(count);
                 } else {
                     // Navigate down in action panel
                     self.state.action_panel_down();
@@ -1483,8 +1510,34 @@ impl App {
             KeyCode::Enter => {
                 if matches!(self.state.prs_list_focus, PrsListFocus::ActionPanel) {
                     self.execute_selected_dynamic_action().await?;
+                } else if matches!(self.state.prs_list_scope, ListScope::Organization) {
+                    // Navigate to PR from org scope (need to switch project context)
+                    // Extract data first to avoid borrow issues
+                    let org_pr_data = self
+                        .state
+                        .sorted_org_prs()
+                        .get(self.state.selected_index)
+                        .map(|op| (op.project_path.clone(), op.pr.id.clone()));
+
+                    if let Some((project_path, pr_id)) = org_pr_data {
+                        // Switch to the PR's project and navigate to detail
+                        self.state.selected_project_path = Some(project_path);
+                        self.state.prs_list_scope = ListScope::Project;
+                        self.state.selected_pr_id = Some(pr_id.clone());
+                        // Load project PRs in background
+                        if let Err(e) = self.load_project_prs().await {
+                            eprintln!("Error loading project PRs: {e}");
+                        }
+                        self.navigate(
+                            View::PrDetail,
+                            ViewParams {
+                                pr_id: Some(pr_id),
+                                ..Default::default()
+                            },
+                        );
+                    }
                 } else {
-                    // Open PR detail
+                    // Open PR detail (project scope)
                     let pr_id = self
                         .state
                         .sorted_prs()
@@ -1506,6 +1559,18 @@ impl App {
             KeyCode::Char('S') => self.state.toggle_pr_sort_direction(),
             KeyCode::Char('a') => {
                 self.state.show_merged_prs = !self.state.show_merged_prs;
+                self.state.reset_selection();
+            }
+            KeyCode::Char('o') => {
+                // Toggle between project and org scope
+                self.state.prs_list_scope = match self.state.prs_list_scope {
+                    ListScope::Project => {
+                        // Load org PRs when switching to org scope
+                        self.load_org_prs().await?;
+                        ListScope::Organization
+                    }
+                    ListScope::Organization => ListScope::Project,
+                };
                 self.state.reset_selection();
             }
             KeyCode::Esc | KeyCode::Backspace => {
@@ -1724,7 +1789,12 @@ impl App {
             }
             KeyCode::Char('j') | KeyCode::Down => {
                 if matches!(self.state.docs_list_focus, DocsListFocus::List) {
-                    self.state.move_selection_down(self.state.docs.len());
+                    let count = if matches!(self.state.docs_list_scope, ListScope::Organization) {
+                        self.state.sorted_org_docs().len()
+                    } else {
+                        self.state.docs.len()
+                    };
+                    self.state.move_selection_down(count);
                 } else {
                     // Navigate down in action panel
                     self.state.action_panel_down();
@@ -1741,8 +1811,34 @@ impl App {
             KeyCode::Enter => {
                 if matches!(self.state.docs_list_focus, DocsListFocus::ActionPanel) {
                     self.execute_selected_dynamic_action().await?;
+                } else if matches!(self.state.docs_list_scope, ListScope::Organization) {
+                    // Navigate to doc from org scope (need to switch project context)
+                    // Extract data first to avoid borrow issues
+                    let org_doc_data = self
+                        .state
+                        .sorted_org_docs()
+                        .get(self.state.selected_index)
+                        .map(|od| (od.project_path.clone(), od.doc.slug.clone()));
+
+                    if let Some((project_path, doc_slug)) = org_doc_data {
+                        // Switch to the doc's project and navigate to detail
+                        self.state.selected_project_path = Some(project_path);
+                        self.state.docs_list_scope = ListScope::Project;
+                        self.state.selected_doc_slug = Some(doc_slug.clone());
+                        // Load project docs in background
+                        if let Err(e) = self.load_project_docs().await {
+                            eprintln!("Error loading project docs: {e}");
+                        }
+                        self.navigate(
+                            View::DocDetail,
+                            ViewParams {
+                                doc_slug: Some(doc_slug),
+                                ..Default::default()
+                            },
+                        );
+                    }
                 } else {
-                    // Open doc detail
+                    // Open doc detail (project scope)
                     if let Some(doc) = self.state.docs.get(self.state.selected_index) {
                         self.state.selected_doc_slug = Some(doc.slug.clone());
                         self.navigate(
@@ -1754,6 +1850,18 @@ impl App {
                         );
                     }
                 }
+            }
+            KeyCode::Char('o') => {
+                // Toggle between project and org scope
+                self.state.docs_list_scope = match self.state.docs_list_scope {
+                    ListScope::Project => {
+                        // Load org docs when switching to org scope
+                        self.load_org_docs().await?;
+                        ListScope::Organization
+                    }
+                    ListScope::Organization => ListScope::Project,
+                };
+                self.state.reset_selection();
             }
             KeyCode::Esc | KeyCode::Backspace => {
                 // Reset focus state when leaving
@@ -2037,6 +2145,337 @@ impl App {
             KeyCode::Char('k') | KeyCode::Up => self.state.scroll_up(),
             KeyCode::Esc | KeyCode::Backspace => self.go_back(),
             _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys for the global search view
+    async fn handle_global_search_key(&mut self, key: KeyEvent) -> Result<()> {
+        use crate::state::GlobalSearchFocus;
+
+        match key.code {
+            // Escape: go back
+            KeyCode::Esc => {
+                self.state.global_search_query.clear();
+                self.state.global_search_results.clear();
+                self.state.global_search_focus = GlobalSearchFocus::SearchInput;
+                self.go_back();
+            }
+            // Tab: toggle focus between input and results
+            KeyCode::Tab => {
+                self.state.global_search_focus.toggle();
+            }
+            // Ctrl+F: cycle filter type
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.state.global_search_filter = self.state.global_search_filter.next();
+                // Re-execute search if we have a query
+                if !self.state.global_search_query.is_empty() {
+                    self.execute_global_search().await?;
+                }
+            }
+            // Navigation in results
+            KeyCode::Down | KeyCode::Char('j') => {
+                if matches!(self.state.global_search_focus, GlobalSearchFocus::Results) {
+                    let max = self.state.global_search_results.len();
+                    if max > 0 && self.state.global_search_selected < max - 1 {
+                        self.state.global_search_selected += 1;
+                    }
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if matches!(self.state.global_search_focus, GlobalSearchFocus::Results)
+                    && self.state.global_search_selected > 0
+                {
+                    self.state.global_search_selected -= 1;
+                }
+            }
+            // Enter: execute search or navigate to result
+            KeyCode::Enter => {
+                if matches!(
+                    self.state.global_search_focus,
+                    GlobalSearchFocus::SearchInput
+                ) {
+                    // Execute search
+                    self.execute_global_search().await?;
+                    if !self.state.global_search_results.is_empty() {
+                        self.state.global_search_focus = GlobalSearchFocus::Results;
+                    }
+                } else {
+                    // Navigate to selected result
+                    self.navigate_to_search_result().await?;
+                }
+            }
+            // Character input in search box
+            KeyCode::Char(c)
+                if matches!(
+                    self.state.global_search_focus,
+                    GlobalSearchFocus::SearchInput
+                ) =>
+            {
+                self.state.global_search_query.push(c);
+            }
+            KeyCode::Backspace
+                if matches!(
+                    self.state.global_search_focus,
+                    GlobalSearchFocus::SearchInput
+                ) =>
+            {
+                self.state.global_search_query.pop();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute global search based on current query and filter
+    async fn execute_global_search(&mut self) -> Result<()> {
+        use crate::state::{GlobalSearchFilter, GlobalSearchResult};
+
+        let query = self.state.global_search_query.clone();
+        if query.is_empty() {
+            self.state.global_search_results.clear();
+            return Ok(());
+        }
+
+        self.state.global_search_loading = true;
+        self.state.global_search_results.clear();
+
+        let mut results = Vec::new();
+
+        // Search issues if filter includes them
+        if matches!(
+            self.state.global_search_filter,
+            GlobalSearchFilter::All | GlobalSearchFilter::Issues
+        ) {
+            // Try advanced search first
+            if let Ok(issues) = self.daemon.advanced_search(&query).await {
+                for (issue, path, name) in issues {
+                    results.push(GlobalSearchResult::Issue {
+                        issue,
+                        project_path: path,
+                        project_name: name,
+                    });
+                }
+            } else {
+                // Fallback: try UUID search if query looks like UUID
+                if let Ok(issues) = self.daemon.search_issues_by_uuid(&query).await {
+                    for (issue, path, name) in issues {
+                        results.push(GlobalSearchResult::Issue {
+                            issue,
+                            project_path: path,
+                            project_name: name,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Search PRs if filter includes them
+        if matches!(
+            self.state.global_search_filter,
+            GlobalSearchFilter::All | GlobalSearchFilter::Prs
+        ) {
+            if let Ok(prs) = self.daemon.search_prs_by_uuid(&query).await {
+                for (pr, path, name) in prs {
+                    results.push(GlobalSearchResult::Pr {
+                        pr,
+                        project_path: path,
+                        project_name: name,
+                    });
+                }
+            }
+        }
+
+        // Search docs if filter includes them
+        if matches!(
+            self.state.global_search_filter,
+            GlobalSearchFilter::All | GlobalSearchFilter::Docs
+        ) {
+            if let Ok(docs) = self.daemon.search_docs_by_slug(&query).await {
+                for (doc, path, name) in docs {
+                    results.push(GlobalSearchResult::Doc {
+                        doc,
+                        project_path: path,
+                        project_name: name,
+                    });
+                }
+            }
+        }
+
+        self.state.global_search_results = results;
+        self.state.global_search_selected = 0;
+        self.state.global_search_loading = false;
+
+        Ok(())
+    }
+
+    /// Navigate to selected search result, switching project context as needed
+    async fn navigate_to_search_result(&mut self) -> Result<()> {
+        use crate::state::GlobalSearchResult;
+
+        let result = match self
+            .state
+            .global_search_results
+            .get(self.state.global_search_selected)
+        {
+            Some(r) => r.clone(),
+            None => return Ok(()),
+        };
+
+        // Switch project context
+        let project_path = result.project_path().to_string();
+        self.state.selected_project_path = Some(project_path.clone());
+
+        // Load project data
+        if let Ok(issues) = self.daemon.list_issues(&project_path).await {
+            self.state.issues = issues;
+        }
+        if let Ok(prs) = self.daemon.list_prs(&project_path).await {
+            self.state.prs = prs;
+        }
+        if let Ok(docs) = self.daemon.list_docs(&project_path).await {
+            self.state.docs = docs;
+        }
+
+        // Clear search state
+        self.state.global_search_query.clear();
+        self.state.global_search_results.clear();
+        self.state.global_search_focus = crate::state::GlobalSearchFocus::SearchInput;
+
+        // Navigate to the appropriate detail view
+        match result {
+            GlobalSearchResult::Issue { issue, .. } => {
+                self.state.selected_issue_id = Some(issue.id.clone());
+                self.navigate(
+                    View::IssueDetail,
+                    ViewParams {
+                        issue_id: Some(issue.id),
+                        ..Default::default()
+                    },
+                );
+            }
+            GlobalSearchResult::Pr { pr, .. } => {
+                self.state.selected_pr_id = Some(pr.id.clone());
+                self.navigate(
+                    View::PrDetail,
+                    ViewParams {
+                        pr_id: Some(pr.id),
+                        ..Default::default()
+                    },
+                );
+            }
+            GlobalSearchResult::Doc { doc, .. } => {
+                self.state.selected_doc_slug = Some(doc.slug.clone());
+                self.navigate(
+                    View::DocDetail,
+                    ViewParams {
+                        doc_slug: Some(doc.slug),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Load org-level issues for org scope view
+    async fn load_org_issues(&mut self) -> Result<()> {
+        use crate::state::OrgIssue;
+
+        if let Some(org_slug) = self.state.current_organization_slug().map(String::from) {
+            match self.daemon.list_issues_by_organization(&org_slug).await {
+                Ok(issues) => {
+                    self.state.org_issues = issues
+                        .into_iter()
+                        .map(|(issue, path, name)| OrgIssue {
+                            issue,
+                            project_path: path,
+                            project_name: name,
+                        })
+                        .collect();
+                }
+                Err(e) => {
+                    self.push_error(format!("Failed to load org issues: {}", e));
+                }
+            }
+        } else {
+            self.push_error("Current project is not part of an organization");
+            self.state.issues_list_scope = crate::state::ListScope::Project;
+        }
+        Ok(())
+    }
+
+    /// Load org-level PRs for org scope view
+    async fn load_org_prs(&mut self) -> Result<()> {
+        use crate::state::OrgPr;
+
+        if let Some(org_slug) = self.state.current_organization_slug().map(String::from) {
+            match self.daemon.list_prs_by_organization(&org_slug).await {
+                Ok(prs) => {
+                    self.state.org_prs = prs
+                        .into_iter()
+                        .map(|(pr, path, name)| OrgPr {
+                            pr,
+                            project_path: path,
+                            project_name: name,
+                        })
+                        .collect();
+                }
+                Err(e) => {
+                    self.push_error(format!("Failed to load org PRs: {}", e));
+                }
+            }
+        } else {
+            self.push_error("Current project is not part of an organization");
+            self.state.prs_list_scope = crate::state::ListScope::Project;
+        }
+        Ok(())
+    }
+
+    /// Load org-level docs for org scope view
+    async fn load_org_docs(&mut self) -> Result<()> {
+        use crate::state::OrgDoc;
+
+        if let Some(org_slug) = self.state.current_organization_slug().map(String::from) {
+            match self.daemon.list_docs_by_organization(&org_slug).await {
+                Ok(docs) => {
+                    self.state.org_docs = docs
+                        .into_iter()
+                        .map(|(doc, path, name)| OrgDoc {
+                            doc,
+                            project_path: path,
+                            project_name: name,
+                        })
+                        .collect();
+                }
+                Err(e) => {
+                    self.push_error(format!("Failed to load org docs: {}", e));
+                }
+            }
+        } else {
+            self.push_error("Current project is not part of an organization");
+            self.state.docs_list_scope = crate::state::ListScope::Project;
+        }
+        Ok(())
+    }
+
+    /// Load PRs for the current project
+    async fn load_project_prs(&mut self) -> Result<()> {
+        if let Some(path) = &self.state.selected_project_path {
+            if let Ok(prs) = self.daemon.list_prs(path).await {
+                self.state.prs = prs;
+            }
+        }
+        Ok(())
+    }
+
+    /// Load Docs for the current project
+    async fn load_project_docs(&mut self) -> Result<()> {
+        if let Some(path) = &self.state.selected_project_path {
+            if let Ok(docs) = self.daemon.list_docs(path).await {
+                self.state.docs = docs;
+            }
         }
         Ok(())
     }
@@ -2557,6 +2996,10 @@ impl App {
             View::DocDetail => self.handle_scroll_mouse(mouse).await?,
             View::DocCreate | View::DocEdit => self.handle_form_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
+            View::GlobalSearch => {
+                let len = self.state.global_search_results.len();
+                self.handle_list_mouse(mouse, len).await?
+            }
         }
 
         // Refresh actions if view changed to one that shows action panel
