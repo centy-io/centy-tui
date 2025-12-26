@@ -3,8 +3,8 @@
 use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
-    IssuesListFocus, LlmAction, LogoStyle, PendingWorktreeAction, PrDetailFocus, PressedButton,
-    PrsListFocus, ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams,
+    IssuesListFocus, LlmAction, LogoStyle, OrganizationFocus, PendingWorktreeAction, PrDetailFocus,
+    PressedButton, PrsListFocus, ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams,
     WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
@@ -280,6 +280,7 @@ impl App {
         match self.state.current_view {
             View::Splash => self.handle_splash_key(key).await?,
             View::Projects => self.handle_projects_key(key).await?,
+            View::Organization => self.handle_organization_key(key).await?,
             View::Issues => self.handle_issues_key(key).await?,
             View::IssueDetail => self.handle_issue_detail_key(key).await?,
             View::IssueCreate => self.handle_issue_create_key(key).await?,
@@ -453,6 +454,100 @@ impl App {
                     self.state.sidebar_index = 4;
                     self.navigate(View::Config, ViewParams::default());
                 }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in Organization view
+    async fn handle_organization_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            // Toggle focus between list and action panel
+            KeyCode::Tab => {
+                self.state.organization_focus.toggle();
+            }
+            // Navigate up
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(
+                    self.state.organization_focus,
+                    OrganizationFocus::ProjectsList
+                ) {
+                    if self.state.selected_project_in_org > 0 {
+                        self.state.selected_project_in_org -= 1;
+                    }
+                } else {
+                    self.state.action_panel_up();
+                }
+            }
+            // Navigate down
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(
+                    self.state.organization_focus,
+                    OrganizationFocus::ProjectsList
+                ) {
+                    let max = self.state.organization_projects.len();
+                    if max > 0 && self.state.selected_project_in_org < max - 1 {
+                        self.state.selected_project_in_org += 1;
+                    }
+                } else {
+                    self.state.action_panel_down();
+                }
+            }
+            // Enter: open selected project or execute action
+            KeyCode::Enter => {
+                if matches!(
+                    self.state.organization_focus,
+                    OrganizationFocus::ActionPanel
+                ) {
+                    self.execute_selected_dynamic_action().await?;
+                } else {
+                    // Open selected project - navigate to Issues view
+                    if let Some(project) = self
+                        .state
+                        .organization_projects
+                        .get(self.state.selected_project_in_org)
+                        .cloned()
+                    {
+                        self.state.selected_project_path = Some(project.path.clone());
+                        if let Ok(issues) = self.daemon.list_issues(&project.path).await {
+                            self.state.issues = issues;
+                        }
+                        if let Ok(docs) = self.daemon.list_docs(&project.path).await {
+                            self.state.docs = docs;
+                        }
+                        if let Ok(prs) = self.daemon.list_prs(&project.path).await {
+                            self.state.prs = prs;
+                        }
+                        self.navigate(View::Issues, ViewParams::default());
+                    }
+                }
+            }
+            // Go back to projects
+            KeyCode::Esc | KeyCode::Backspace => {
+                self.state.organization_focus = OrganizationFocus::ProjectsList;
+                self.go_back();
+            }
+            // 'p' - Navigate to All Projects
+            KeyCode::Char('p') => {
+                self.navigate(View::Projects, ViewParams::default());
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle mouse events in Organization view
+    async fn handle_organization_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        match mouse.kind {
+            MouseEventKind::ScrollDown => {
+                self.state.scroll_down();
+            }
+            MouseEventKind::ScrollUp => {
+                self.state.scroll_up();
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Simple click handling - could be expanded to select projects
             }
             _ => {}
         }
@@ -2122,6 +2217,7 @@ impl App {
         match self.state.current_view {
             View::Splash => self.handle_splash_mouse(mouse).await?,
             View::Projects => self.handle_projects_grid_mouse(mouse).await?,
+            View::Organization => self.handle_organization_mouse(mouse).await?,
             View::Issues => {
                 let len = self.state.sorted_issues().len();
                 self.handle_list_mouse(mouse, len).await?
@@ -2259,6 +2355,9 @@ impl App {
             "nav_docs" => {
                 self.navigate(View::Docs, ViewParams::default());
             }
+            "nav_projects" => {
+                self.navigate(View::Projects, ViewParams::default());
+            }
             _ => {}
         }
         Ok(())
@@ -2281,12 +2380,74 @@ impl App {
         // Find which segment was clicked
         for (start_col, end_col, target_view) in &self.state.context_bar_segments {
             if mouse.column >= *start_col && mouse.column < *end_col {
-                self.navigate_to_breadcrumb_view(target_view.clone());
+                // Special handling for Organization view - needs async data loading
+                if matches!(target_view, View::Organization) {
+                    // Get org slug from current project
+                    if let Some(path) = &self.state.selected_project_path {
+                        if let Some(project) = self.state.projects.iter().find(|p| &p.path == path)
+                        {
+                            if let Some(org_slug) = &project.organization_slug {
+                                self.load_organization_data(org_slug.clone()).await;
+                            }
+                        }
+                    }
+                } else {
+                    self.navigate_to_breadcrumb_view(target_view.clone());
+                }
                 return Ok(true);
             }
         }
 
         Ok(false)
+    }
+
+    /// Load organization data and navigate to Organization view
+    async fn load_organization_data(&mut self, org_slug: String) {
+        // Fetch organization details
+        match self.daemon.get_organization(&org_slug).await {
+            Ok(Some(org)) => {
+                self.state.current_organization = Some(org);
+            }
+            Ok(None) => {
+                self.push_error("Organization not found");
+                return;
+            }
+            Err(e) => {
+                self.push_error(format!("Failed to load organization: {}", e));
+                return;
+            }
+        }
+
+        // Fetch projects for this organization
+        match self.daemon.list_projects_by_organization(&org_slug).await {
+            Ok(projects) => {
+                self.state.organization_projects = projects.clone();
+
+                // Fetch users for each project
+                self.state.project_users.clear();
+                for project in &projects {
+                    if let Ok(users) = self.daemon.list_users(&project.path).await {
+                        self.state.project_users.insert(project.path.clone(), users);
+                    }
+                }
+            }
+            Err(e) => {
+                self.push_error(format!("Failed to load projects: {}", e));
+                return;
+            }
+        }
+
+        // Reset selection and navigate
+        self.state.selected_project_in_org = 0;
+        self.state.organization_focus = OrganizationFocus::ProjectsList;
+        self.state.scroll_offset = 0;
+        self.navigate(
+            View::Organization,
+            ViewParams {
+                organization_slug: Some(org_slug),
+                ..Default::default()
+            },
+        );
     }
 
     /// Navigate to a view from breadcrumb click

@@ -7,6 +7,7 @@ mod docs;
 pub mod forms;
 mod issues;
 mod layout;
+mod organization;
 mod projects;
 mod prs;
 pub mod sidebar;
@@ -59,6 +60,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     match &app.state.current_view {
         View::Splash => {} // Handled above
         View::Projects => projects::draw(frame, main_area, app),
+        View::Organization => organization::draw(frame, main_area, app),
         View::Issues => issues::draw_list(frame, main_area, app),
         View::IssueDetail => issues::draw_detail(frame, main_area, app),
         View::IssueCreate => forms::draw_issue_create(frame, main_area, app),

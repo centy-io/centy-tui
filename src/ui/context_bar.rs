@@ -112,6 +112,12 @@ fn build_breadcrumbs(app: &App) -> Vec<(String, View)> {
         View::Projects => {
             breadcrumbs.push(("Projects".to_string(), View::Projects));
         }
+        View::Organization => {
+            breadcrumbs.push(("Projects".to_string(), View::Projects));
+            if let Some(org) = &app.state.current_organization {
+                breadcrumbs.push((org.name.clone(), View::Organization));
+            }
+        }
         View::Issues => {
             if let Some(project) = project_info {
                 add_org_project_breadcrumbs(&mut breadcrumbs, project);
@@ -270,12 +276,12 @@ fn add_org_project_breadcrumbs(
     breadcrumbs: &mut Vec<(String, View)>,
     project: &crate::state::Project,
 ) {
-    // Add organization if available
+    // Add organization if available - clicking navigates to Organization view
     if let Some(org_name) = &project.organization_name {
-        breadcrumbs.push((org_name.clone(), View::Projects));
+        breadcrumbs.push((org_name.clone(), View::Organization));
     }
 
-    // Add project name
+    // Add project name - clicking returns to Projects view
     let project_name = project
         .project_title
         .clone()
