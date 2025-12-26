@@ -4,8 +4,9 @@ use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DocDetailFocus, DocsListFocus, EntityType, IssueDetailFocus,
     IssuesListFocus, LlmAction, LogoStyle, MoveEntityType, OrganizationFocus, PendingMoveAction,
-    PendingWorktreeAction, PrDetailFocus, PressedButton, Project, PrsListFocus, ScreenBuffer,
-    ScreenPos, SplashState, UiArea, View, ViewParams, WorktreeDialogOption,
+    PendingStartWorkAction, PendingWorktreeAction, PrDetailFocus, PressedButton, Project,
+    PrsListFocus, ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams,
+    WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -258,6 +259,12 @@ impl App {
         // Handle move dialog (modal)
         if self.state.pending_move_action.is_some() {
             self.handle_move_dialog_key(key).await?;
+            return Ok(());
+        }
+
+        // Handle start work dialog (modal)
+        if self.state.pending_start_work_action.is_some() {
+            self.handle_start_work_dialog_key(key).await?;
             return Ok(());
         }
 
@@ -1217,17 +1224,38 @@ impl App {
                 _ => {}
             },
 
-            // Mode actions (Issue-specific)
+            // Mode actions (Issue-specific) - with "in progress" confirmation
             "mode:plan" => {
-                self.state.action_panel_llm_action = LlmAction::Plan;
+                if self.should_show_start_work_dialog() {
+                    self.state.pending_start_work_action = Some(PendingStartWorkAction {
+                        action_id: "mode:plan".to_string(),
+                        action_label: "Plan Mode".to_string(),
+                    });
+                } else {
+                    self.state.action_panel_llm_action = LlmAction::Plan;
+                }
             }
             "mode:implement" => {
-                self.state.action_panel_llm_action = LlmAction::Implement;
+                if self.should_show_start_work_dialog() {
+                    self.state.pending_start_work_action = Some(PendingStartWorkAction {
+                        action_id: "mode:implement".to_string(),
+                        action_label: "Implement Mode".to_string(),
+                    });
+                } else {
+                    self.state.action_panel_llm_action = LlmAction::Implement;
+                }
             }
 
-            // External actions
+            // External actions - with "in progress" confirmation
             "open_in_vscode" => {
-                self.execute_open_in_vscode().await?;
+                if self.should_show_start_work_dialog() {
+                    self.state.pending_start_work_action = Some(PendingStartWorkAction {
+                        action_id: "open_in_vscode".to_string(),
+                        action_label: "Open in VS Code".to_string(),
+                    });
+                } else {
+                    self.execute_open_in_vscode().await?;
+                }
             }
             "open_in_terminal" => {
                 self.execute_open_in_terminal().await?;
@@ -2318,6 +2346,68 @@ impl App {
             }
         }
 
+        Ok(())
+    }
+
+    /// Check if the start work dialog should be shown
+    /// Returns true if we're on an issue view and the issue is not already "in progress"
+    fn should_show_start_work_dialog(&self) -> bool {
+        // Only show for issues view
+        if !matches!(self.state.current_view, View::Issues | View::IssueDetail) {
+            return false;
+        }
+
+        // Check current issue status
+        if let Some(issue_id) = &self.state.selected_issue_id {
+            if let Some(issue) = self.state.issues.iter().find(|i| &i.id == issue_id) {
+                return issue.metadata.status != "in progress";
+            }
+        }
+        false
+    }
+
+    /// Handle keys for the start work dialog
+    async fn handle_start_work_dialog_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            // Cancel - dismiss dialog without doing anything
+            KeyCode::Esc => {
+                self.state.pending_start_work_action = None;
+            }
+            // Accept - change status and continue with action
+            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let Some(action) = self.state.pending_start_work_action.take() {
+                    // First, update status to "in progress"
+                    self.update_issue_status("in progress".to_string()).await?;
+                    // Then execute the original action
+                    self.execute_start_work_action(&action.action_id).await?;
+                }
+            }
+            // Decline - continue with action without status change
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                if let Some(action) = self.state.pending_start_work_action.take() {
+                    // Execute action without status change
+                    self.execute_start_work_action(&action.action_id).await?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute the start work action (after dialog decision)
+    async fn execute_start_work_action(&mut self, action_id: &str) -> Result<()> {
+        match action_id {
+            "open_in_vscode" => {
+                self.execute_open_in_vscode().await?;
+            }
+            "mode:plan" => {
+                self.state.action_panel_llm_action = LlmAction::Plan;
+            }
+            "mode:implement" => {
+                self.state.action_panel_llm_action = LlmAction::Implement;
+            }
+            _ => {}
+        }
         Ok(())
     }
 
