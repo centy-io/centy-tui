@@ -27,6 +27,7 @@ impl LocalAction {
 /// Get local actions for a given view
 pub fn get_local_actions(view: &View) -> Vec<LocalAction> {
     match view {
+        View::Organization => vec![LocalAction::new("nav_projects", "All Projects", "p")],
         View::Issues => vec![
             LocalAction::new("new_issue", "New Issue", "n"),
             LocalAction::new("nav_prs", "Pull Requests", "3"),
