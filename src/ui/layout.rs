@@ -167,6 +167,7 @@ fn get_view_hints(view: &View) -> String {
         View::Projects => {
             "h/j/k/l:nav  Enter:select  f:fav  a:archive  x:untrack  n:new".to_string()
         }
+        View::Organization => "j/k:nav  Tab:panel  Enter:open  p:projects  Esc:back".to_string(),
         View::Issues => {
             "j/k:nav  Tab:panel  Enter:view/run  n:new  s/S:sort  a:all  y:copy".to_string()
         }

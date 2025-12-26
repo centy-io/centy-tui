@@ -5,7 +5,7 @@
 
 use crate::state::{
     ActionCategory, Config, DaemonInfo, Doc, EntityAction, EntityActionsResponse, EntityType,
-    Issue, IssueMetadata, PrMetadata, Project, PullRequest,
+    Issue, IssueMetadata, Organization, PrMetadata, Project, PullRequest, User,
 };
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
@@ -939,6 +939,122 @@ impl DaemonClient {
             .collect();
 
         Ok(EntityActionsResponse { actions })
+    }
+
+    /// Get an organization by slug
+    pub async fn get_organization(&mut self, slug: &str) -> Result<Option<Organization>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::GetOrganizationRequest {
+            slug: slug.to_string(),
+        });
+
+        let response = client
+            .get_organization(request)
+            .await
+            .map_err(|e| anyhow!("Failed to get organization: {}", e))?;
+
+        let inner = response.into_inner();
+        if !inner.found {
+            return Ok(None);
+        }
+
+        let org = inner.organization.map(|o| Organization {
+            slug: o.slug,
+            name: o.name,
+            description: o.description,
+            created_at: parse_timestamp(&o.created_at),
+            updated_at: parse_timestamp(&o.updated_at),
+            project_count: o.project_count,
+        });
+
+        Ok(org)
+    }
+
+    /// List users for a project
+    pub async fn list_users(&mut self, project_path: &str) -> Result<Vec<User>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ListUsersRequest {
+            project_path: project_path.to_string(),
+            git_username: String::new(),
+        });
+
+        let response = client
+            .list_users(request)
+            .await
+            .map_err(|e| anyhow!("Failed to list users: {}", e))?;
+
+        let users = response
+            .into_inner()
+            .users
+            .into_iter()
+            .map(|u| User {
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                git_usernames: u.git_usernames,
+            })
+            .collect();
+
+        Ok(users)
+    }
+
+    /// List projects for a specific organization
+    pub async fn list_projects_by_organization(&mut self, org_slug: &str) -> Result<Vec<Project>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::ListProjectsRequest {
+            include_stale: false,
+            include_uninitialized: false,
+            include_archived: false,
+            organization_slug: org_slug.to_string(),
+            ungrouped_only: false,
+            include_temp: false,
+        });
+
+        let response = client
+            .list_projects(request)
+            .await
+            .map_err(|e| anyhow!("Failed to list projects: {}", e))?;
+
+        let projects = response
+            .into_inner()
+            .projects
+            .into_iter()
+            .map(|p| Project {
+                path: p.path,
+                name: p.name,
+                project_title: if p.project_title.is_empty() {
+                    None
+                } else {
+                    Some(p.project_title)
+                },
+                user_title: if p.user_title.is_empty() {
+                    None
+                } else {
+                    Some(p.user_title)
+                },
+                is_favorite: p.is_favorite,
+                is_archived: p.is_archived,
+                initialized: p.initialized,
+                issue_count: p.issue_count,
+                doc_count: p.doc_count,
+                pr_count: 0,
+                organization_slug: if p.organization_slug.is_empty() {
+                    None
+                } else {
+                    Some(p.organization_slug)
+                },
+                organization_name: if p.organization_name.is_empty() {
+                    None
+                } else {
+                    Some(p.organization_name)
+                },
+            })
+            .collect();
+
+        Ok(projects)
     }
 }
 

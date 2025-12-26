@@ -18,6 +18,7 @@ pub enum View {
     Splash,
     #[default]
     Projects,
+    Organization,
     Issues,
     IssueDetail,
     IssueCreate,
@@ -55,6 +56,7 @@ pub struct ViewParams {
     pub issue_id: Option<String>,
     pub pr_id: Option<String>,
     pub doc_slug: Option<String>,
+    pub organization_slug: Option<String>,
 }
 
 /// Sort field for issues
@@ -249,6 +251,23 @@ impl DocDetailFocus {
     }
 }
 
+/// Focus state for Organization view (projects list vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OrganizationFocus {
+    #[default]
+    ProjectsList,
+    ActionPanel,
+}
+
+impl OrganizationFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::ProjectsList => Self::ActionPanel,
+            Self::ActionPanel => Self::ProjectsList,
+        };
+    }
+}
+
 /// LLM action type for agent operations (mirrors proto LlmAction)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LlmAction {
@@ -305,6 +324,26 @@ impl Project {
             .or(self.project_title.as_deref())
             .unwrap_or(&self.name)
     }
+}
+
+/// Organization information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Organization {
+    pub slug: String,
+    pub name: String,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub project_count: u32,
+}
+
+/// User/team member information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub git_usernames: Vec<String>,
 }
 
 /// A section in the grouped projects view
@@ -670,6 +709,13 @@ pub struct AppState {
     // Docs action panel state
     pub docs_list_focus: DocsListFocus,
     pub doc_detail_focus: DocDetailFocus,
+
+    // Organization view state
+    pub organization_focus: OrganizationFocus,
+    pub current_organization: Option<Organization>,
+    pub organization_projects: Vec<Project>,
+    pub project_users: HashMap<String, Vec<User>>,
+    pub selected_project_in_org: usize,
 
     // Dynamic actions state (from GetEntityActions)
     pub current_actions: EntityActionsResponse,
@@ -1351,6 +1397,7 @@ impl AppState {
             View::PrDetail => matches!(self.pr_detail_focus, PrDetailFocus::ActionPanel),
             View::Docs => matches!(self.docs_list_focus, DocsListFocus::ActionPanel),
             View::DocDetail => matches!(self.doc_detail_focus, DocDetailFocus::ActionPanel),
+            View::Organization => matches!(self.organization_focus, OrganizationFocus::ActionPanel),
             _ => false,
         }
     }
