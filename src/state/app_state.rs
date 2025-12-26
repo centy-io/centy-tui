@@ -31,6 +31,8 @@ pub enum View {
     DocDetail,
     DocCreate,
     DocEdit,
+    People,
+    PersonDetail,
     Config,
 }
 
@@ -121,6 +123,33 @@ impl PrSortField {
             Self::CreatedAt => "Created",
             Self::UpdatedAt => "Updated",
             Self::Status => "Status",
+        }
+    }
+}
+
+/// Sort field for People
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PeopleSortField {
+    #[default]
+    Name,
+    CommitCount,
+    IssuesAssigned,
+}
+
+impl PeopleSortField {
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Name => Self::CommitCount,
+            Self::CommitCount => Self::IssuesAssigned,
+            Self::IssuesAssigned => Self::Name,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Name => "Name",
+            Self::CommitCount => "Commits",
+            Self::IssuesAssigned => "Issues",
         }
     }
 }
@@ -251,6 +280,40 @@ impl DocDetailFocus {
     }
 }
 
+/// Focus state for People list view (list vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PeopleListFocus {
+    #[default]
+    List,
+    ActionPanel,
+}
+
+impl PeopleListFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::List => Self::ActionPanel,
+            Self::ActionPanel => Self::List,
+        };
+    }
+}
+
+/// Focus state for Person detail view (content vs action panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PersonDetailFocus {
+    #[default]
+    Content,
+    ActionPanel,
+}
+
+impl PersonDetailFocus {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Content => Self::ActionPanel,
+            Self::ActionPanel => Self::Content,
+        };
+    }
+}
+
 /// Focus state for Organization view (projects list vs action panel)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OrganizationFocus {
@@ -344,6 +407,17 @@ pub struct User {
     pub name: String,
     pub email: String,
     pub git_usernames: Vec<String>,
+    // Contribution stats
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub commit_count: u32,
+    #[serde(default)]
+    pub issues_assigned: u32,
+    #[serde(default)]
+    pub issues_created: u32,
+    #[serde(default)]
+    pub prs_created: u32,
 }
 
 /// A section in the grouped projects view
@@ -710,6 +784,13 @@ pub struct AppState {
     pub docs_list_focus: DocsListFocus,
     pub doc_detail_focus: DocDetailFocus,
 
+    // People view state
+    pub people_list_focus: PeopleListFocus,
+    pub person_detail_focus: PersonDetailFocus,
+    pub people_sort_field: PeopleSortField,
+    pub people_sort_direction: SortDirection,
+    pub selected_person_id: Option<String>,
+
     // Organization view state
     pub organization_focus: OrganizationFocus,
     pub current_organization: Option<Organization>,
@@ -1032,6 +1113,18 @@ impl AppState {
         self.reset_selection();
     }
 
+    /// Cycle People sort field
+    pub fn cycle_people_sort_field(&mut self) {
+        self.people_sort_field = self.people_sort_field.next();
+        self.reset_selection();
+    }
+
+    /// Toggle People sort direction
+    pub fn toggle_people_sort_direction(&mut self) {
+        self.people_sort_direction = self.people_sort_direction.toggle();
+        self.reset_selection();
+    }
+
     /// Get sorted projects (favorites first)
     #[allow(dead_code)]
     pub fn sorted_projects(&self) -> Vec<&Project> {
@@ -1170,6 +1263,31 @@ impl AppState {
         });
 
         prs
+    }
+
+    /// Get sorted people from project_users for current project
+    pub fn sorted_people(&self) -> Vec<&User> {
+        let users = match &self.selected_project_path {
+            Some(path) => self.project_users.get(path).map(|v| v.as_slice()),
+            None => None,
+        };
+
+        let mut people: Vec<_> = users.unwrap_or(&[]).iter().collect();
+
+        people.sort_by(|a, b| {
+            let cmp = match self.people_sort_field {
+                PeopleSortField::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                PeopleSortField::CommitCount => a.commit_count.cmp(&b.commit_count),
+                PeopleSortField::IssuesAssigned => a.issues_assigned.cmp(&b.issues_assigned),
+            };
+
+            match self.people_sort_direction {
+                SortDirection::Asc => cmp,
+                SortDirection::Desc => cmp.reverse(),
+            }
+        });
+
+        people
     }
 
     /// Move to next form field

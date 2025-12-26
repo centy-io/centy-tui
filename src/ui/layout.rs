@@ -181,6 +181,8 @@ fn get_view_hints(view: &View) -> String {
         View::Docs => "j/k:nav  Enter:view  n:new  Esc:back".to_string(),
         View::DocDetail => "e:edit  j/k:scroll  d/u:page  Esc:back".to_string(),
         View::DocCreate | View::DocEdit => format!("Tab:next  {}  Esc:cancel", SAVE_HINT),
+        View::People => "j/k:nav  Tab:panel  Enter:view  s/S:sort  Esc:back".to_string(),
+        View::PersonDetail => "j/k:scroll  d/u:page  Esc:back".to_string(),
         View::Config => "j/k:scroll  Esc:back".to_string(),
     }
 }
