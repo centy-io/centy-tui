@@ -4,9 +4,10 @@ use crate::daemon::DaemonClient;
 use crate::state::{
     AppState, ButtonPressState, DeleteEntityType, DocDetailFocus, DocsListFocus, EntityType,
     IssueDetailFocus, IssuesListFocus, ListScope, LlmAction, LogoStyle, MoveEntityType,
-    OrganizationFocus, PendingDeleteAction, PendingMoveAction, PendingWorktreeAction,
-    PrDetailFocus, PressedButton, Project, PrsListFocus, ScreenBuffer, ScreenPos, SplashState,
-    UiArea, View, ViewParams, WorktreeDialogOption,
+    OrganizationFocus, PendingDeleteAction, PendingMoveAction, PendingStartWorkAction,
+    PendingWorktreeAction, PeopleListFocus, PersonDetailFocus, PrDetailFocus, PressedButton,
+    Project, PrsListFocus, ScreenBuffer, ScreenPos, SplashState, UiArea, View, ViewParams,
+    WorktreeDialogOption,
 };
 use crate::ui::forms::get_doc_field_count;
 use crate::ui::BUTTON_HEIGHT;
@@ -268,6 +269,12 @@ impl App {
             return Ok(());
         }
 
+        // Handle start work dialog (modal)
+        if self.state.pending_start_work_action.is_some() {
+            self.handle_start_work_dialog_key(key).await?;
+            return Ok(());
+        }
+
         // Clear any status messages on key press
         self.copy_message = None;
 
@@ -316,6 +323,8 @@ impl App {
             View::DocDetail => self.handle_doc_detail_key(key).await?,
             View::DocCreate => self.handle_doc_create_key(key).await?,
             View::DocEdit => self.handle_doc_edit_key(key).await?,
+            View::People => self.handle_people_key(key).await?,
+            View::PersonDetail => self.handle_person_detail_key(key).await?,
             View::Config => self.handle_config_key(key).await?,
             View::GlobalSearch => self.handle_global_search_key(key).await?,
             View::InitProject => self.handle_init_project_key(key).await?,
@@ -493,6 +502,12 @@ impl App {
             KeyCode::Char('5') => {
                 if self.state.selected_project_path.is_some() {
                     self.state.sidebar_index = 4;
+                    self.navigate(View::People, ViewParams::default());
+                }
+            }
+            KeyCode::Char('6') => {
+                if self.state.selected_project_path.is_some() {
+                    self.state.sidebar_index = 5;
                     self.navigate(View::Config, ViewParams::default());
                 }
             }
@@ -670,6 +685,22 @@ impl App {
                     crate::state::ListScope::Organization
                 ) {
                     self.load_org_issues().await?;
+                }
+            }
+            // Navigation to other views
+            KeyCode::Char('3') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Prs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('4') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Docs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('5') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::People, ViewParams::default());
                 }
             }
             KeyCode::Esc | KeyCode::Backspace => {
@@ -1288,17 +1319,38 @@ impl App {
                 _ => {}
             },
 
-            // Mode actions (Issue-specific)
+            // Mode actions (Issue-specific) - with "in progress" confirmation
             "mode:plan" => {
-                self.state.action_panel_llm_action = LlmAction::Plan;
+                if self.should_show_start_work_dialog() {
+                    self.state.pending_start_work_action = Some(PendingStartWorkAction {
+                        action_id: "mode:plan".to_string(),
+                        action_label: "Plan Mode".to_string(),
+                    });
+                } else {
+                    self.state.action_panel_llm_action = LlmAction::Plan;
+                }
             }
             "mode:implement" => {
-                self.state.action_panel_llm_action = LlmAction::Implement;
+                if self.should_show_start_work_dialog() {
+                    self.state.pending_start_work_action = Some(PendingStartWorkAction {
+                        action_id: "mode:implement".to_string(),
+                        action_label: "Implement Mode".to_string(),
+                    });
+                } else {
+                    self.state.action_panel_llm_action = LlmAction::Implement;
+                }
             }
 
-            // External actions
+            // External actions - with "in progress" confirmation
             "open_in_vscode" => {
-                self.execute_open_in_vscode().await?;
+                if self.should_show_start_work_dialog() {
+                    self.state.pending_start_work_action = Some(PendingStartWorkAction {
+                        action_id: "open_in_vscode".to_string(),
+                        action_label: "Open in VS Code".to_string(),
+                    });
+                } else {
+                    self.execute_open_in_vscode().await?;
+                }
             }
             "open_in_terminal" => {
                 self.execute_open_in_terminal().await?;
@@ -1621,6 +1673,22 @@ impl App {
                 };
                 self.state.reset_selection();
             }
+            // Navigation to other views
+            KeyCode::Char('2') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Issues, ViewParams::default());
+                }
+            }
+            KeyCode::Char('4') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Docs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('5') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::People, ViewParams::default());
+                }
+            }
             KeyCode::Esc | KeyCode::Backspace => {
                 // Reset focus state when leaving
                 self.state.prs_list_focus = PrsListFocus::List;
@@ -1911,6 +1979,22 @@ impl App {
                 };
                 self.state.reset_selection();
             }
+            // Navigation to other views
+            KeyCode::Char('2') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Issues, ViewParams::default());
+                }
+            }
+            KeyCode::Char('3') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Prs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('5') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::People, ViewParams::default());
+                }
+            }
             KeyCode::Esc | KeyCode::Backspace => {
                 // Reset focus state when leaving
                 self.state.docs_list_focus = DocsListFocus::List;
@@ -2184,6 +2268,149 @@ impl App {
                 self.push_error(format!("Failed to update doc: {}", e));
             }
         }
+    }
+
+    /// Handle keys in People view
+    async fn handle_people_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check for dynamic action shortcut first (when focused on list)
+        if matches!(self.state.people_list_focus, PeopleListFocus::List) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
+
+        match key.code {
+            // Tab: Switch focus between list and action panel
+            KeyCode::Tab => {
+                self.state.people_list_focus.toggle();
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.people_list_focus, PeopleListFocus::List) {
+                    self.state
+                        .move_selection_down(self.state.sorted_people().len());
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.people_list_focus, PeopleListFocus::List) {
+                    self.state.move_selection_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            KeyCode::Enter => {
+                if matches!(self.state.people_list_focus, PeopleListFocus::ActionPanel) {
+                    self.execute_selected_dynamic_action().await?;
+                } else {
+                    // Open person detail
+                    let sorted_people = self.state.sorted_people();
+                    if let Some(person) = sorted_people.get(self.state.selected_index) {
+                        self.state.selected_person_id = Some(person.id.clone());
+                        self.state.scroll_offset = 0;
+                        self.navigate(View::PersonDetail, ViewParams::default());
+                    }
+                }
+            }
+            // Sort controls
+            KeyCode::Char('s') => {
+                self.state.cycle_people_sort_field();
+            }
+            KeyCode::Char('S') => {
+                self.state.toggle_people_sort_direction();
+            }
+            // Navigation to other views
+            KeyCode::Char('2') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Issues, ViewParams::default());
+                }
+            }
+            KeyCode::Char('3') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Prs, ViewParams::default());
+                }
+            }
+            KeyCode::Char('4') => {
+                if self.state.selected_project_path.is_some() {
+                    self.navigate(View::Docs, ViewParams::default());
+                }
+            }
+            KeyCode::Esc | KeyCode::Backspace => {
+                // Reset focus state when leaving
+                self.state.people_list_focus = PeopleListFocus::List;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in Person Detail view
+    async fn handle_person_detail_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Check for dynamic action shortcut first (when focused on content)
+        if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+            if let Some(action_idx) = self.find_action_for_key(&key) {
+                self.state.action_panel_selected_index = action_idx;
+                self.execute_selected_dynamic_action().await?;
+                return Ok(());
+            }
+        }
+
+        match key.code {
+            // Tab: Switch focus between content and action panel
+            KeyCode::Tab => {
+                self.state.person_detail_focus.toggle();
+            }
+            // Navigation (j/k/Up/Down)
+            KeyCode::Char('j') | KeyCode::Down => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_down();
+                } else {
+                    // Navigate down in action panel
+                    self.state.action_panel_down();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_up();
+                } else {
+                    // Navigate up in action panel
+                    self.state.action_panel_up();
+                }
+            }
+            KeyCode::Char('d') | KeyCode::PageDown => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_down_page();
+                }
+            }
+            KeyCode::Char('u') | KeyCode::PageUp => {
+                if matches!(self.state.person_detail_focus, PersonDetailFocus::Content) {
+                    self.state.scroll_up_page();
+                }
+            }
+            // Execute action (Enter when action panel is focused)
+            KeyCode::Enter => {
+                if matches!(
+                    self.state.person_detail_focus,
+                    PersonDetailFocus::ActionPanel
+                ) {
+                    self.execute_selected_dynamic_action().await?;
+                }
+            }
+            // Go back (also reset focus and action panel index)
+            KeyCode::Esc | KeyCode::Backspace => {
+                self.state.person_detail_focus = PersonDetailFocus::Content;
+                self.state.action_panel_selected_index = 0;
+                self.go_back();
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Handle keys in Config view
@@ -2950,6 +3177,68 @@ impl App {
         Ok(())
     }
 
+    /// Check if the start work dialog should be shown
+    /// Returns true if we're on an issue view and the issue is not already "in progress"
+    fn should_show_start_work_dialog(&self) -> bool {
+        // Only show for issues view
+        if !matches!(self.state.current_view, View::Issues | View::IssueDetail) {
+            return false;
+        }
+
+        // Check current issue status
+        if let Some(issue_id) = &self.state.selected_issue_id {
+            if let Some(issue) = self.state.issues.iter().find(|i| &i.id == issue_id) {
+                return issue.metadata.status != "in progress";
+            }
+        }
+        false
+    }
+
+    /// Handle keys for the start work dialog
+    async fn handle_start_work_dialog_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            // Cancel - dismiss dialog without doing anything
+            KeyCode::Esc => {
+                self.state.pending_start_work_action = None;
+            }
+            // Accept - change status and continue with action
+            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let Some(action) = self.state.pending_start_work_action.take() {
+                    // First, update status to "in progress"
+                    self.update_issue_status("in progress".to_string()).await?;
+                    // Then execute the original action
+                    self.execute_start_work_action(&action.action_id).await?;
+                }
+            }
+            // Decline - continue with action without status change
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                if let Some(action) = self.state.pending_start_work_action.take() {
+                    // Execute action without status change
+                    self.execute_start_work_action(&action.action_id).await?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute the start work action (after dialog decision)
+    async fn execute_start_work_action(&mut self, action_id: &str) -> Result<()> {
+        match action_id {
+            "open_in_vscode" => {
+                self.execute_open_in_vscode().await?;
+            }
+            "mode:plan" => {
+                self.state.action_panel_llm_action = LlmAction::Plan;
+            }
+            "mode:implement" => {
+                self.state.action_panel_llm_action = LlmAction::Implement;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Start the move flow for an issue
     fn start_move_issue(&mut self) {
         let project_path = match &self.state.selected_project_path {
@@ -3185,6 +3474,11 @@ impl App {
             View::Docs => self.handle_list_mouse(mouse, self.state.docs.len()).await?,
             View::DocDetail => self.handle_scroll_mouse(mouse).await?,
             View::DocCreate | View::DocEdit => self.handle_form_mouse(mouse).await?,
+            View::People => {
+                let len = self.state.sorted_people().len();
+                self.handle_list_mouse(mouse, len).await?
+            }
+            View::PersonDetail => self.handle_scroll_mouse(mouse).await?,
             View::Config => self.handle_scroll_mouse(mouse).await?,
             View::GlobalSearch => {
                 let len = self.state.global_search_results.len();
@@ -3311,6 +3605,9 @@ impl App {
             }
             "nav_docs" => {
                 self.navigate(View::Docs, ViewParams::default());
+            }
+            "nav_people" => {
+                self.navigate(View::People, ViewParams::default());
             }
             "nav_projects" => {
                 self.navigate(View::Projects, ViewParams::default());

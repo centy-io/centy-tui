@@ -9,6 +9,7 @@ mod global_search;
 mod issues;
 mod layout;
 mod organization;
+mod people;
 mod projects;
 mod prs;
 pub mod sidebar;
@@ -74,6 +75,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         View::DocDetail => docs::draw_detail(frame, main_area, app),
         View::DocCreate => forms::draw_doc_create(frame, main_area, app),
         View::DocEdit => forms::draw_doc_edit(frame, main_area, app),
+        View::People => people::draw_list(frame, main_area, app),
+        View::PersonDetail => people::draw_detail(frame, main_area, app),
         View::Config => config_panel::draw(frame, main_area, app),
         View::GlobalSearch => global_search::draw(frame, main_area, app),
         View::InitProject => forms::draw_init_project(frame, main_area, app),
@@ -110,6 +113,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // Draw confirm delete dialog (on top of everything except error)
     if let Some(ref action) = app.state.pending_delete_action {
         components::render_confirm_dialog(frame, action);
+    }
+
+    // Draw start work dialog (on top of everything except error)
+    if let Some(ref action) = app.state.pending_start_work_action {
+        components::render_start_work_dialog(frame, action);
     }
 
     // Draw error dialog last (on top of everything)
@@ -329,6 +337,7 @@ fn get_category_color(category: ActionCategory, destructive: bool) -> Color {
     match category {
         ActionCategory::Crud => Color::Green,
         ActionCategory::Mode => Color::Yellow,
+        ActionCategory::Research => Color::Magenta,
         ActionCategory::Status => Color::Cyan,
         ActionCategory::External => Color::White,
         ActionCategory::Unspecified => Color::White,

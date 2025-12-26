@@ -33,6 +33,7 @@ pub fn get_local_actions(view: &View) -> Vec<LocalAction> {
             LocalAction::new("toggle_scope", "Toggle Scope", "o"),
             LocalAction::new("nav_prs", "Pull Requests", "3"),
             LocalAction::new("nav_docs", "Docs", "4"),
+            LocalAction::new("nav_people", "People", "5"),
         ],
         View::IssueDetail => vec![LocalAction::new("edit_issue", "Edit Issue", "e")],
         View::Prs => vec![
@@ -40,6 +41,7 @@ pub fn get_local_actions(view: &View) -> Vec<LocalAction> {
             LocalAction::new("toggle_scope", "Toggle Scope", "o"),
             LocalAction::new("nav_issues", "Issues", "2"),
             LocalAction::new("nav_docs", "Docs", "4"),
+            LocalAction::new("nav_people", "People", "5"),
         ],
         View::PrDetail => vec![LocalAction::new("edit_pr", "Edit PR", "e")],
         View::Docs => vec![
@@ -47,9 +49,16 @@ pub fn get_local_actions(view: &View) -> Vec<LocalAction> {
             LocalAction::new("toggle_scope", "Toggle Scope", "o"),
             LocalAction::new("nav_issues", "Issues", "2"),
             LocalAction::new("nav_prs", "Pull Requests", "3"),
+            LocalAction::new("nav_people", "People", "5"),
         ],
         View::DocDetail => vec![LocalAction::new("edit_doc", "Edit Doc", "e")],
         View::GlobalSearch => vec![LocalAction::new("cycle_filter", "Cycle Filter", "^F")],
+        View::People => vec![
+            LocalAction::new("nav_issues", "Issues", "2"),
+            LocalAction::new("nav_prs", "Pull Requests", "3"),
+            LocalAction::new("nav_docs", "Docs", "4"),
+        ],
+        View::PersonDetail => vec![],
         // Views with no local actions
         View::Splash | View::Projects | View::Config => vec![],
         // Form views - no sidebar
