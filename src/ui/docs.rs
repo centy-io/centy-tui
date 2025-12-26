@@ -2,7 +2,7 @@
 
 use super::render_scrollable_list;
 use crate::app::App;
-use crate::state::{DocDetailFocus, DocsListFocus};
+use crate::state::{DocDetailFocus, DocsListFocus, ListScope};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 /// Draw the docs list
-pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
+pub fn draw_list(frame: &mut Frame, area: Rect, app: &mut App) {
     // Split area into content (left) and action panel (right)
     let h_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -31,27 +31,45 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the docs list content (left side)
-fn draw_docs_list_content(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_docs_list_content(frame: &mut Frame, area: Rect, app: &mut App) {
+    let is_org_scope = matches!(app.state.docs_list_scope, ListScope::Organization);
+
+    let title = if is_org_scope {
+        " Docs - Org ".to_string()
+    } else {
+        let project_name = app
+            .state
+            .selected_project_path
+            .as_ref()
+            .and_then(|p| p.split('/').next_back())
+            .unwrap_or("Project");
+        format!(" Docs - {} ", project_name)
+    };
+
     // Border color based on focus
     let border_color = match app.state.docs_list_focus {
         DocsListFocus::List => Color::Cyan,
         DocsListFocus::ActionPanel => Color::DarkGray,
     };
 
-    let docs = &app.state.docs;
-    let project_name = app
-        .state
-        .selected_project_path
-        .as_ref()
-        .and_then(|p| p.split('/').next_back())
-        .unwrap_or("Project");
+    let scope_label = if is_org_scope {
+        "[Org]".to_string()
+    } else {
+        String::new()
+    };
 
-    if docs.is_empty() {
+    let item_count = if is_org_scope {
+        app.state.sorted_org_docs().len()
+    } else {
+        app.state.docs.len()
+    };
+
+    if item_count == 0 {
         let content = Paragraph::new("No docs found.\nPress 'n' to create a new doc.")
             .style(Style::default().fg(Color::DarkGray))
             .block(
                 Block::default()
-                    .title(format!(" Docs - {} ", project_name))
+                    .title(title)
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color)),
             );
@@ -59,38 +77,98 @@ fn draw_docs_list_content(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let items: Vec<ListItem> = docs
-        .iter()
-        .enumerate()
-        .map(|(idx, doc)| {
-            let is_selected = idx == app.state.selected_index;
-            let prefix = if is_selected { "▸" } else { " " };
+    // Split area for header and list
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(0)])
+        .split(area);
 
-            let style = if is_selected {
-                Style::default().bg(Color::DarkGray)
-            } else {
-                Style::default()
-            };
+    // Draw header with scope indicator
+    let mut header_spans = vec![];
+    if !scope_label.is_empty() {
+        header_spans.push(Span::styled(
+            scope_label,
+            Style::default().fg(Color::Yellow),
+        ));
+        header_spans.push(Span::raw(" "));
+    }
+    header_spans.push(Span::styled(
+        "[o]scope",
+        Style::default().fg(Color::DarkGray),
+    ));
 
-            let line = Line::from(vec![
-                Span::styled(prefix, style),
-                Span::styled(&doc.slug, Style::default().fg(Color::Cyan)),
-                Span::raw(" - "),
-                Span::styled(&doc.title, style),
-            ]);
+    let header = Paragraph::new(Line::from(header_spans));
+    frame.render_widget(header, chunks[0]);
 
-            ListItem::new(line)
-        })
-        .collect();
+    // Draw list - handle both scopes
+    let items: Vec<ListItem> = if is_org_scope {
+        app.state
+            .sorted_org_docs()
+            .iter()
+            .enumerate()
+            .map(|(idx, org_doc)| {
+                let doc = &org_doc.doc;
+                let is_selected = idx == app.state.selected_index;
+
+                let prefix = if is_selected { "▸" } else { " " };
+
+                let style = if is_selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(&doc.slug, Style::default().fg(Color::Cyan)),
+                    Span::raw(" - "),
+                    Span::styled(&doc.title, style),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("[{}]", org_doc.project_name),
+                        Style::default().fg(Color::Blue),
+                    ),
+                ]);
+
+                ListItem::new(line)
+            })
+            .collect()
+    } else {
+        app.state
+            .docs
+            .iter()
+            .enumerate()
+            .map(|(idx, doc)| {
+                let is_selected = idx == app.state.selected_index;
+                let prefix = if is_selected { "▸" } else { " " };
+
+                let style = if is_selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(&doc.slug, Style::default().fg(Color::Cyan)),
+                    Span::raw(" - "),
+                    Span::styled(&doc.title, style),
+                ]);
+
+                ListItem::new(line)
+            })
+            .collect()
+    };
 
     let list = List::new(items).block(
         Block::default()
-            .title(format!(" Docs - {} ", project_name))
+            .title(title)
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color)),
     );
 
-    render_scrollable_list(frame, area, list, app.state.selected_index);
+    app.state.list_scroll_offset =
+        render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
 }
 
 /// Draw doc detail view

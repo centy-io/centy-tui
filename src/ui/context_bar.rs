@@ -266,6 +266,10 @@ fn build_breadcrumbs(app: &App) -> Vec<(String, View)> {
             }
             breadcrumbs.push(("Config".to_string(), View::Config));
         }
+        View::GlobalSearch => {
+            breadcrumbs.push(("Projects".to_string(), View::Projects));
+            breadcrumbs.push(("Search".to_string(), View::GlobalSearch));
+        }
     }
 
     breadcrumbs

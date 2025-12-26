@@ -8,6 +8,13 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
+use std::collections::BTreeMap;
+
+/// A section header or project entry for display
+enum DisplayItem<'a> {
+    Header(String),
+    Project(&'a Project, usize), // Project and its selection index
+}
 
 /// Render the move dialog (project picker or confirmation)
 pub fn render_move_dialog(
@@ -25,7 +32,7 @@ pub fn render_move_dialog(
 fn render_project_picker(frame: &mut Frame, action: &PendingMoveAction, projects: &[&Project]) {
     // Dialog dimensions
     let dialog_width = 60u16;
-    let dialog_height = 20u16;
+    let dialog_height = 22u16;
 
     // Center dialog
     let area = frame.area();
@@ -92,39 +99,107 @@ fn render_project_picker(frame: &mut Frame, action: &PendingMoveAction, projects
             Style::default().fg(Color::DarkGray),
         )));
     } else {
-        // Show up to 8 projects with scrolling
-        let visible_count = 8.min(filtered.len());
-        let start_idx = if action.selected_project_index >= visible_count {
-            action.selected_project_index - visible_count + 1
+        // Group projects by organization
+        let mut favorites: Vec<&Project> = Vec::new();
+        let mut org_groups: BTreeMap<String, Vec<&Project>> = BTreeMap::new();
+        let mut ungrouped: Vec<&Project> = Vec::new();
+
+        for project in &filtered {
+            if project.is_favorite {
+                favorites.push(project);
+            }
+            if let Some(org_name) = &project.organization_name {
+                org_groups
+                    .entry(org_name.clone())
+                    .or_default()
+                    .push(project);
+            } else if !project.is_favorite {
+                ungrouped.push(project);
+            }
+        }
+
+        // Build display items list with headers and projects
+        let mut display_items: Vec<DisplayItem> = Vec::new();
+        let mut project_idx = 0;
+
+        // Favorites section
+        if !favorites.is_empty() {
+            display_items.push(DisplayItem::Header("★ FAVORITES".to_string()));
+            for project in &favorites {
+                display_items.push(DisplayItem::Project(project, project_idx));
+                project_idx += 1;
+            }
+        }
+
+        // Organization sections
+        for (org_name, org_projects) in &org_groups {
+            display_items.push(DisplayItem::Header(org_name.to_uppercase()));
+            for project in org_projects {
+                // Skip if already in favorites (to avoid duplicates)
+                if project.is_favorite {
+                    continue;
+                }
+                display_items.push(DisplayItem::Project(project, project_idx));
+                project_idx += 1;
+            }
+        }
+
+        // Ungrouped section
+        if !ungrouped.is_empty() {
+            display_items.push(DisplayItem::Header("UNGROUPED".to_string()));
+            for project in &ungrouped {
+                display_items.push(DisplayItem::Project(project, project_idx));
+                project_idx += 1;
+            }
+        }
+
+        // Show items with scrolling (8 visible lines)
+        let visible_count = 10;
+
+        // Find the display line of the selected project for scrolling
+        let selected_display_idx = display_items.iter().position(|item| {
+            matches!(item, DisplayItem::Project(_, idx) if *idx == action.selected_project_index)
+        }).unwrap_or(0);
+
+        let start_idx = if selected_display_idx >= visible_count {
+            selected_display_idx.saturating_sub(visible_count - 1)
         } else {
             0
         };
 
-        for (idx, project) in filtered
-            .iter()
-            .enumerate()
-            .skip(start_idx)
-            .take(visible_count)
-        {
-            let is_selected = idx == action.selected_project_index;
-            let prefix = if is_selected { "▸ " } else { "  " };
-            let style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-            content.push(Line::from(Span::styled(
-                format!("{}{}", prefix, project.display_name()),
-                style,
-            )));
+        for item in display_items.iter().skip(start_idx).take(visible_count) {
+            match item {
+                DisplayItem::Header(name) => {
+                    content.push(Line::from(Span::styled(
+                        format!(" {}", name),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::DIM),
+                    )));
+                }
+                DisplayItem::Project(project, idx) => {
+                    let is_selected = *idx == action.selected_project_index;
+                    let prefix = if is_selected { " ▸ " } else { "   " };
+                    let style = if is_selected {
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    content.push(Line::from(Span::styled(
+                        format!("{}{}", prefix, project.display_name()),
+                        style,
+                    )));
+                }
+            }
         }
 
         // Show scroll indicator if needed
-        if filtered.len() > visible_count {
+        if display_items.len() > visible_count {
+            let hidden = display_items.len() - visible_count;
             content.push(Line::from(Span::styled(
-                format!("  ({} more...)", filtered.len() - visible_count),
+                format!("   ({} more...)", hidden),
                 Style::default().fg(Color::DarkGray),
             )));
         }

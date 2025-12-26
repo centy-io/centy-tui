@@ -5,6 +5,7 @@ mod config_panel;
 mod context_bar;
 mod docs;
 pub mod forms;
+mod global_search;
 mod issues;
 mod layout;
 mod organization;
@@ -74,6 +75,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         View::DocCreate => forms::draw_doc_create(frame, main_area, app),
         View::DocEdit => forms::draw_doc_edit(frame, main_area, app),
         View::Config => config_panel::draw(frame, main_area, app),
+        View::GlobalSearch => global_search::draw(frame, main_area, app),
     }
 
     // Draw status bar

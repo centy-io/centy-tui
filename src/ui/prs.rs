@@ -2,7 +2,7 @@
 
 use super::render_scrollable_list;
 use crate::app::App;
-use crate::state::{PrDetailFocus, PrsListFocus};
+use crate::state::{ListScope, PrDetailFocus, PrsListFocus};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 /// Draw the PRs list
-pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
+pub fn draw_list(frame: &mut Frame, area: Rect, app: &mut App) {
     // Split area into content (left) and action panel (right)
     let h_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -31,20 +31,26 @@ pub fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the PRs list content (left side)
-fn draw_prs_list_content(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_prs_list_content(frame: &mut Frame, area: Rect, app: &mut App) {
+    let is_org_scope = matches!(app.state.prs_list_scope, ListScope::Organization);
+
+    let title = if is_org_scope {
+        " Pull Requests - Org ".to_string()
+    } else {
+        let project_name = app
+            .state
+            .selected_project_path
+            .as_ref()
+            .and_then(|p| p.split('/').next_back())
+            .unwrap_or("Project");
+        format!(" Pull Requests - {} ", project_name)
+    };
+
     // Border color based on focus
     let border_color = match app.state.prs_list_focus {
         PrsListFocus::List => Color::Cyan,
         PrsListFocus::ActionPanel => Color::DarkGray,
     };
-
-    let sorted_prs = app.state.sorted_prs();
-    let project_name = app
-        .state
-        .selected_project_path
-        .as_ref()
-        .and_then(|p| p.split('/').next_back())
-        .unwrap_or("Project");
 
     let sort_label = format!(
         "Sort: {} {}",
@@ -52,12 +58,31 @@ fn draw_prs_list_content(frame: &mut Frame, area: Rect, app: &App) {
         app.state.pr_sort_direction.symbol()
     );
 
-    let hidden_count = app
-        .state
-        .prs
-        .iter()
-        .filter(|p| p.metadata.status == "merged" || p.metadata.status == "closed")
-        .count();
+    let scope_label = if is_org_scope {
+        "[Org]".to_string()
+    } else {
+        String::new()
+    };
+
+    let item_count = if is_org_scope {
+        app.state.sorted_org_prs().len()
+    } else {
+        app.state.sorted_prs().len()
+    };
+
+    let hidden_count = if is_org_scope {
+        app.state
+            .org_prs
+            .iter()
+            .filter(|p| p.pr.metadata.status == "merged" || p.pr.metadata.status == "closed")
+            .count()
+    } else {
+        app.state
+            .prs
+            .iter()
+            .filter(|p| p.metadata.status == "merged" || p.metadata.status == "closed")
+            .count()
+    };
 
     let filter_label = if hidden_count > 0 {
         if app.state.show_merged_prs {
@@ -69,7 +94,7 @@ fn draw_prs_list_content(frame: &mut Frame, area: Rect, app: &App) {
         String::new()
     };
 
-    if sorted_prs.is_empty() {
+    if item_count == 0 {
         let message = if !app.state.show_merged_prs && hidden_count > 0 {
             "No open PRs. Press 'a' to show all PRs.\nPress 'n' to create a new PR."
         } else {
@@ -79,7 +104,7 @@ fn draw_prs_list_content(frame: &mut Frame, area: Rect, app: &App) {
             .style(Style::default().fg(Color::DarkGray))
             .block(
                 Block::default()
-                    .title(format!(" Pull Requests - {} ", project_name))
+                    .title(title)
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color)),
             );
@@ -92,89 +117,177 @@ fn draw_prs_list_content(frame: &mut Frame, area: Rect, app: &App) {
         .constraints([Constraint::Length(2), Constraint::Min(0)])
         .split(area);
 
-    // Draw header
-    let header = Paragraph::new(Line::from(vec![
+    // Draw header with scope indicator
+    let mut header_spans = vec![
         Span::styled(sort_label, Style::default().fg(Color::Cyan)),
         Span::styled(" [s]cycle [S]dir", Style::default().fg(Color::DarkGray)),
-        Span::raw(" | "),
-        Span::styled(filter_label, Style::default().fg(Color::DarkGray)),
-        Span::styled(" [a]toggle", Style::default().fg(Color::DarkGray)),
-    ]));
+    ];
+    if !scope_label.is_empty() {
+        header_spans.push(Span::raw(" | "));
+        header_spans.push(Span::styled(
+            scope_label,
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+    header_spans.push(Span::styled(
+        " [o]scope",
+        Style::default().fg(Color::DarkGray),
+    ));
+    if !filter_label.is_empty() {
+        header_spans.push(Span::raw(" | "));
+        header_spans.push(Span::styled(
+            filter_label,
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    header_spans.push(Span::styled(
+        " [a]toggle",
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    let header = Paragraph::new(Line::from(header_spans));
     frame.render_widget(header, chunks[0]);
 
-    // Draw list
-    let items: Vec<ListItem> = sorted_prs
-        .iter()
-        .enumerate()
-        .map(|(idx, pr)| {
-            let is_selected = idx == app.state.selected_index;
-            let prefix = if is_selected { "▸" } else { " " };
-            let number = format!("#{}", pr.display_number);
+    // Draw list - handle both scopes
+    let items: Vec<ListItem> = if is_org_scope {
+        app.state
+            .sorted_org_prs()
+            .iter()
+            .enumerate()
+            .map(|(idx, org_pr)| {
+                let pr = &org_pr.pr;
+                let is_selected = idx == app.state.selected_index;
 
-            let priority_color = match pr.metadata.priority {
-                1 => Color::Red,
-                2 => Color::Yellow,
-                _ => Color::Green,
-            };
+                let prefix = if is_selected { "▸" } else { " " };
+                let number = format!("#{}", pr.display_number);
 
-            let status_color = match pr.metadata.status.as_str() {
-                "draft" => Color::DarkGray,
-                "open" => Color::Blue,
-                "merged" => Color::Magenta,
-                "closed" => Color::Red,
-                _ => Color::DarkGray,
-            };
+                let priority_color = match pr.metadata.priority {
+                    1 => Color::Red,
+                    2 => Color::Yellow,
+                    _ => Color::Green,
+                };
 
-            let priority_label = match pr.metadata.priority {
-                1 => "high",
-                2 => "med",
-                _ => "low",
-            };
+                let status_color = match pr.metadata.status.as_str() {
+                    "draft" => Color::DarkGray,
+                    "open" => Color::Blue,
+                    "merged" => Color::Magenta,
+                    "closed" => Color::Red,
+                    _ => Color::DarkGray,
+                };
 
-            let branches = format!(
-                "({} → {})",
-                pr.metadata.source_branch, pr.metadata.target_branch
-            );
+                let priority_label = match pr.metadata.priority {
+                    1 => "high",
+                    2 => "med",
+                    _ => "low",
+                };
 
-            let style = if is_selected {
-                Style::default().bg(Color::DarkGray)
-            } else {
-                Style::default()
-            };
+                let style = if is_selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
 
-            let line = Line::from(vec![
-                Span::styled(prefix, style),
-                Span::styled(number, Style::default().fg(Color::Cyan)),
-                Span::raw(" "),
-                Span::styled(
-                    format!("[{}]", priority_label),
-                    Style::default().fg(priority_color),
-                ),
-                Span::raw(" "),
-                Span::styled(
-                    format!("[{}]", pr.metadata.status),
-                    Style::default().fg(status_color),
-                ),
-                Span::raw(" "),
-                Span::styled(&pr.title, style),
-                Span::styled(
-                    format!(" {}", branches),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]);
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(number, Style::default().fg(Color::Cyan)),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("[{}]", priority_label),
+                        Style::default().fg(priority_color),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("[{}]", pr.metadata.status),
+                        Style::default().fg(status_color),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(&pr.title, style),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("[{}]", org_pr.project_name),
+                        Style::default().fg(Color::Blue),
+                    ),
+                ]);
 
-            ListItem::new(line)
-        })
-        .collect();
+                ListItem::new(line)
+            })
+            .collect()
+    } else {
+        app.state
+            .sorted_prs()
+            .iter()
+            .enumerate()
+            .map(|(idx, pr)| {
+                let is_selected = idx == app.state.selected_index;
+                let prefix = if is_selected { "▸" } else { " " };
+                let number = format!("#{}", pr.display_number);
+
+                let priority_color = match pr.metadata.priority {
+                    1 => Color::Red,
+                    2 => Color::Yellow,
+                    _ => Color::Green,
+                };
+
+                let status_color = match pr.metadata.status.as_str() {
+                    "draft" => Color::DarkGray,
+                    "open" => Color::Blue,
+                    "merged" => Color::Magenta,
+                    "closed" => Color::Red,
+                    _ => Color::DarkGray,
+                };
+
+                let priority_label = match pr.metadata.priority {
+                    1 => "high",
+                    2 => "med",
+                    _ => "low",
+                };
+
+                let branches = format!(
+                    "({} → {})",
+                    pr.metadata.source_branch, pr.metadata.target_branch
+                );
+
+                let style = if is_selected {
+                    Style::default().bg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(number, Style::default().fg(Color::Cyan)),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("[{}]", priority_label),
+                        Style::default().fg(priority_color),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("[{}]", pr.metadata.status),
+                        Style::default().fg(status_color),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(&pr.title, style),
+                    Span::styled(
+                        format!(" {}", branches),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]);
+
+                ListItem::new(line)
+            })
+            .collect()
+    };
 
     let list = List::new(items).block(
         Block::default()
-            .title(format!(" Pull Requests - {} ", project_name))
+            .title(title)
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color)),
     );
 
-    render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
+    app.state.list_scroll_offset =
+        render_scrollable_list(frame, chunks[1], list, app.state.selected_index);
 }
 
 /// Draw PR detail view

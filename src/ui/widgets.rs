@@ -11,12 +11,22 @@ use ratatui::{
 /// This is the preferred way to render lists in the app. It wraps `render_stateful_widget`
 /// with a `ListState`, ensuring the list scrolls to keep the selected item in view.
 ///
+/// Returns the scroll offset (index of first visible item) after rendering,
+/// which can be stored for mouse click calculations.
+///
 /// # Example
 /// ```ignore
 /// let list = List::new(items).block(block);
-/// render_scrollable_list(frame, area, list, app.state.selected_index);
+/// let scroll_offset = render_scrollable_list(frame, area, list, app.state.selected_index);
+/// app.state.list_scroll_offset = scroll_offset;
 /// ```
-pub fn render_scrollable_list(frame: &mut Frame, area: Rect, list: List, selected_index: usize) {
+pub fn render_scrollable_list(
+    frame: &mut Frame,
+    area: Rect,
+    list: List,
+    selected_index: usize,
+) -> usize {
     let mut list_state = ListState::default().with_selected(Some(selected_index));
     frame.render_stateful_widget(list, area, &mut list_state);
+    list_state.offset()
 }

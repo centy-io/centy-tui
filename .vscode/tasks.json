@@ -2,10 +2,10 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Plan Issue #69",
+      "label": "Plan Issue #75",
       "type": "shell",
       "command": "centy",
-      "args": ["issue", "917cd27d-2a51-47cd-85e1-411eb309c212", "--action", "plan"],
+      "args": ["issue", "5a3201f6-1e39-48d5-aa84-eed6593fa496", "--action", "plan"],
       "presentation": {
         "reveal": "always",
         "panel": "new",

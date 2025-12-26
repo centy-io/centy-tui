@@ -1056,6 +1056,276 @@ impl DaemonClient {
 
         Ok(projects)
     }
+
+    // ============ Cross-Project Search Methods ============
+
+    /// Search issues by UUID across all projects
+    pub async fn search_issues_by_uuid(
+        &mut self,
+        uuid: &str,
+    ) -> Result<Vec<(Issue, String, String)>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::GetIssuesByUuidRequest {
+            uuid: uuid.to_string(),
+        });
+
+        let response = client
+            .get_issues_by_uuid(request)
+            .await
+            .map_err(|e| anyhow!("Failed to search issues: {}", e))?;
+
+        let inner = response.into_inner();
+
+        let results = inner
+            .issues
+            .into_iter()
+            .map(|iwp| {
+                let proto_issue = iwp.issue.unwrap_or_default();
+                let metadata = proto_issue.metadata.unwrap_or_default();
+                let issue = Issue {
+                    id: proto_issue.id,
+                    display_number: proto_issue.display_number,
+                    title: proto_issue.title,
+                    description: proto_issue.description,
+                    metadata: IssueMetadata {
+                        status: metadata.status,
+                        priority: metadata.priority as u32,
+                        priority_label: if metadata.priority_label.is_empty() {
+                            None
+                        } else {
+                            Some(metadata.priority_label)
+                        },
+                        created_at: parse_timestamp(&metadata.created_at),
+                        updated_at: parse_timestamp(&metadata.updated_at),
+                        custom_fields: metadata.custom_fields,
+                    },
+                };
+                (issue, iwp.project_path, iwp.project_name)
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Search docs by slug across all projects
+    pub async fn search_docs_by_slug(&mut self, slug: &str) -> Result<Vec<(Doc, String, String)>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::GetDocsBySlugRequest {
+            slug: slug.to_string(),
+        });
+
+        let response = client
+            .get_docs_by_slug(request)
+            .await
+            .map_err(|e| anyhow!("Failed to search docs: {}", e))?;
+
+        let inner = response.into_inner();
+
+        let results = inner
+            .docs
+            .into_iter()
+            .map(|dwp| {
+                let proto_doc = dwp.doc.unwrap_or_default();
+                let metadata = proto_doc.metadata.unwrap_or_default();
+                let doc = Doc {
+                    slug: proto_doc.slug,
+                    title: proto_doc.title,
+                    content: proto_doc.content,
+                    created_at: parse_timestamp(&metadata.created_at),
+                    updated_at: parse_timestamp(&metadata.updated_at),
+                };
+                (doc, dwp.project_path, dwp.project_name)
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Search PRs by UUID across all projects
+    pub async fn search_prs_by_uuid(
+        &mut self,
+        uuid: &str,
+    ) -> Result<Vec<(PullRequest, String, String)>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::GetPrsByUuidRequest {
+            uuid: uuid.to_string(),
+        });
+
+        let response = client
+            .get_prs_by_uuid(request)
+            .await
+            .map_err(|e| anyhow!("Failed to search PRs: {}", e))?;
+
+        let inner = response.into_inner();
+
+        let results = inner
+            .prs
+            .into_iter()
+            .map(|pwp| {
+                let proto_pr = pwp.pr.unwrap_or_default();
+                let metadata = proto_pr.metadata.unwrap_or_default();
+                let pr = PullRequest {
+                    id: proto_pr.id,
+                    display_number: proto_pr.display_number,
+                    title: proto_pr.title,
+                    description: proto_pr.description,
+                    metadata: PrMetadata {
+                        status: metadata.status,
+                        priority: metadata.priority as u32,
+                        priority_label: if metadata.priority_label.is_empty() {
+                            None
+                        } else {
+                            Some(metadata.priority_label)
+                        },
+                        source_branch: metadata.source_branch,
+                        target_branch: metadata.target_branch,
+                        linked_issues: Vec::new(),
+                        reviewers: metadata.reviewers,
+                        created_at: parse_timestamp(&metadata.created_at),
+                        updated_at: parse_timestamp(&metadata.updated_at),
+                        merged_at: if metadata.merged_at.is_empty() {
+                            None
+                        } else {
+                            Some(parse_timestamp(&metadata.merged_at))
+                        },
+                        closed_at: if metadata.closed_at.is_empty() {
+                            None
+                        } else {
+                            Some(parse_timestamp(&metadata.closed_at))
+                        },
+                        custom_fields: metadata.custom_fields,
+                    },
+                };
+                (pr, pwp.project_path, pwp.project_name)
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Advanced search across all projects
+    pub async fn advanced_search(&mut self, query: &str) -> Result<Vec<(Issue, String, String)>> {
+        let client = self.ensure_connected().await?;
+
+        let request = tonic::Request::new(proto::AdvancedSearchRequest {
+            query: query.to_string(),
+            sort_by: "priority".to_string(),
+            sort_descending: false,
+            multi_project: true,
+            project_path: String::new(),
+        });
+
+        let response = client
+            .advanced_search(request)
+            .await
+            .map_err(|e| anyhow!("Failed to search: {}", e))?;
+
+        let inner = response.into_inner();
+
+        if !inner.success {
+            return Err(anyhow!("{}", inner.error));
+        }
+
+        let results = inner
+            .results
+            .into_iter()
+            .map(|sri| {
+                let proto_issue = sri.issue.unwrap_or_default();
+                let metadata = proto_issue.metadata.unwrap_or_default();
+                let issue = Issue {
+                    id: proto_issue.id,
+                    display_number: proto_issue.display_number,
+                    title: proto_issue.title,
+                    description: proto_issue.description,
+                    metadata: IssueMetadata {
+                        status: metadata.status,
+                        priority: metadata.priority as u32,
+                        priority_label: if metadata.priority_label.is_empty() {
+                            None
+                        } else {
+                            Some(metadata.priority_label)
+                        },
+                        created_at: parse_timestamp(&metadata.created_at),
+                        updated_at: parse_timestamp(&metadata.updated_at),
+                        custom_fields: metadata.custom_fields,
+                    },
+                };
+                (issue, sri.project_path, sri.project_name)
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    // ============ Organization Aggregation Methods ============
+
+    /// List issues from all projects in an organization
+    pub async fn list_issues_by_organization(
+        &mut self,
+        org_slug: &str,
+    ) -> Result<Vec<(Issue, String, String)>> {
+        // First get all projects in the organization
+        let projects = self.list_projects_by_organization(org_slug).await?;
+
+        let mut all_issues = Vec::new();
+
+        // Fetch issues from each project
+        for project in &projects {
+            if let Ok(issues) = self.list_issues(&project.path).await {
+                let project_name = project.display_name().to_string();
+                for issue in issues {
+                    all_issues.push((issue, project.path.clone(), project_name.clone()));
+                }
+            }
+        }
+
+        Ok(all_issues)
+    }
+
+    /// List PRs from all projects in an organization
+    pub async fn list_prs_by_organization(
+        &mut self,
+        org_slug: &str,
+    ) -> Result<Vec<(PullRequest, String, String)>> {
+        let projects = self.list_projects_by_organization(org_slug).await?;
+
+        let mut all_prs = Vec::new();
+
+        for project in &projects {
+            if let Ok(prs) = self.list_prs(&project.path).await {
+                let project_name = project.display_name().to_string();
+                for pr in prs {
+                    all_prs.push((pr, project.path.clone(), project_name.clone()));
+                }
+            }
+        }
+
+        Ok(all_prs)
+    }
+
+    /// List docs from all projects in an organization
+    pub async fn list_docs_by_organization(
+        &mut self,
+        org_slug: &str,
+    ) -> Result<Vec<(Doc, String, String)>> {
+        let projects = self.list_projects_by_organization(org_slug).await?;
+
+        let mut all_docs = Vec::new();
+
+        for project in &projects {
+            if let Ok(docs) = self.list_docs(&project.path).await {
+                let project_name = project.display_name().to_string();
+                for doc in docs {
+                    all_docs.push((doc, project.path.clone(), project_name.clone()));
+                }
+            }
+        }
+
+        Ok(all_docs)
+    }
 }
 
 /// Parse an ISO timestamp string to DateTime<Utc>
