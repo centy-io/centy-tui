@@ -1069,7 +1069,12 @@ impl App {
                     let user_msg = error_str
                         .replace("Git error: ", "")
                         .replace("Worktree error: ", "");
-                    self.push_error(user_msg);
+                    // Avoid pushing empty error messages
+                    if user_msg.trim().is_empty() {
+                        self.push_error(format!("Failed to open in VS Code: {}", error_str));
+                    } else {
+                        self.push_error(user_msg);
+                    }
                 }
             }
         }
@@ -3188,7 +3193,7 @@ impl App {
         // Check current issue status
         if let Some(issue_id) = &self.state.selected_issue_id {
             if let Some(issue) = self.state.issues.iter().find(|i| &i.id == issue_id) {
-                return issue.metadata.status != "in progress";
+                return issue.metadata.status != "in-progress";
             }
         }
         false
@@ -3204,8 +3209,8 @@ impl App {
             // Accept - change status and continue with action
             KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
                 if let Some(action) = self.state.pending_start_work_action.take() {
-                    // First, update status to "in progress"
-                    self.update_issue_status("in progress".to_string()).await?;
+                    // First, update status to "in-progress"
+                    self.update_issue_status("in-progress".to_string()).await?;
                     // Then execute the original action
                     self.execute_start_work_action(&action.action_id).await?;
                 }
