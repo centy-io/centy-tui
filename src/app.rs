@@ -1011,9 +1011,16 @@ impl App {
             .await
         {
             Ok(result) => {
+                let action_word = if result.workspace_reused {
+                    "Reopened"
+                } else {
+                    "Opened"
+                };
+
                 if result.vscode_opened {
                     self.copy_message = Some(format!(
-                        "Opened #{} in VSCode (expires: {})",
+                        "{} #{} in VSCode (expires: {})",
+                        action_word,
                         result.display_number,
                         result
                             .expires_at
@@ -1022,8 +1029,13 @@ impl App {
                             .unwrap_or(&result.expires_at)
                     ));
                 } else {
+                    let workspace_action = if result.workspace_reused {
+                        "Reopened workspace"
+                    } else {
+                        "Workspace created"
+                    };
                     self.copy_message =
-                        Some(format!("Workspace created at {}", result.workspace_path));
+                        Some(format!("{} at {}", workspace_action, result.workspace_path));
                 }
             }
             Err(e) => {

@@ -38,6 +38,8 @@ pub struct OpenInVscodeResult {
     pub display_number: u32,
     pub expires_at: String,
     pub vscode_opened: bool,
+    pub workspace_reused: bool,
+    pub original_created_at: Option<String>,
 }
 
 /// Result from opening an agent in a terminal
@@ -781,6 +783,12 @@ impl DaemonClient {
             display_number: inner.display_number,
             expires_at: inner.expires_at,
             vscode_opened: inner.vscode_opened,
+            workspace_reused: inner.workspace_reused,
+            original_created_at: if inner.original_created_at.is_empty() {
+                None
+            } else {
+                Some(inner.original_created_at)
+            },
         })
     }
 
