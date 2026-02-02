@@ -17,6 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tonic_build::configure()
         .build_server(false) // We only need the client
+        .type_attribute(".", "#[allow(clippy::enum_variant_names)]")
         .compile_protos(&[proto_file], &[include_dir])?;
 
     Ok(())

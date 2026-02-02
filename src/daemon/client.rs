@@ -168,6 +168,7 @@ impl DaemonClient {
             status: String::new(),
             priority: 0,
             draft: None,
+            include_deleted: false,
         });
 
         let response = client
@@ -215,6 +216,7 @@ impl DaemonClient {
             source_branch: String::new(),
             target_branch: String::new(),
             priority: 0,
+            include_deleted: false,
         });
 
         let response = client
@@ -272,6 +274,7 @@ impl DaemonClient {
 
         let request = tonic::Request::new(proto::ListDocsRequest {
             project_path: project_path.to_string(),
+            include_deleted: false,
         });
 
         let response = client
@@ -312,7 +315,8 @@ impl DaemonClient {
             .await
             .map_err(|e| anyhow!("Failed to get config: {}", e))?;
 
-        let config = response.into_inner();
+        let response = response.into_inner();
+        let config = response.config.unwrap_or_default();
         Ok(Config {
             priority_levels: config.priority_levels as u32,
             allowed_states: config.allowed_states,
@@ -443,6 +447,7 @@ impl DaemonClient {
             custom_fields: HashMap::new(),
             template: String::new(),
             draft,
+            is_org_issue: false,
         });
 
         let response = client
@@ -759,7 +764,7 @@ impl DaemonClient {
     ) -> Result<OpenInVscodeResult> {
         let client = self.ensure_connected().await?;
 
-        let request = tonic::Request::new(proto::OpenInTempVscodeRequest {
+        let request = tonic::Request::new(proto::OpenInTempWorkspaceRequest {
             project_path: project_path.to_string(),
             issue_id: issue_id.to_string(),
             action,
@@ -782,7 +787,7 @@ impl DaemonClient {
             issue_id: inner.issue_id,
             display_number: inner.display_number,
             expires_at: inner.expires_at,
-            vscode_opened: inner.vscode_opened,
+            vscode_opened: inner.editor_opened,
             workspace_reused: inner.workspace_reused,
             original_created_at: if inner.original_created_at.is_empty() {
                 None
@@ -1009,6 +1014,7 @@ impl DaemonClient {
         let request = tonic::Request::new(proto::ListUsersRequest {
             project_path: project_path.to_string(),
             git_username: String::new(),
+            include_deleted: false,
         });
 
         let response = client
