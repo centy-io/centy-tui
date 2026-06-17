@@ -49,7 +49,7 @@ pub fn draw(frame: &mut Frame, area: Rect, splash_state: &SplashState) {
     let logo_width = 46u16; // Approximate width of the CENTY text
 
     // Calculate center position with scroll offset (can go negative/above screen)
-    let base_y = area.y as i32 + (area.height.saturating_sub(logo_height)) as i32 / 2;
+    let base_y = i32::from(area.y) + i32::from(area.height.saturating_sub(logo_height)) / 2;
     let y_pos = base_y - splash_state.scroll_offset as i32;
     let x = area.x + (area.width.saturating_sub(logo_width)) / 2;
 

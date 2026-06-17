@@ -71,7 +71,7 @@ impl SplashState {
             let eased = simple_easing::cubic_out(progress);
             // Calculate offset - scroll completely off the top of the screen
             // Move from center to fully off top (half height + logo height buffer)
-            self.scroll_offset = eased * (terminal_height as f32);
+            self.scroll_offset = eased * f32::from(terminal_height);
         } else {
             self.phase = SplashPhase::Complete;
         }
