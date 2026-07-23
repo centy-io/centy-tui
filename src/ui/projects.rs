@@ -191,14 +191,15 @@ fn draw_scroll_indicator(
     }
 
     // Calculate scrollbar position and size
-    let scrollbar_height =
-        ((visible_height as u32 * visible_height as u32) / total_height as u32).max(1) as u16;
+    let scrollbar_height = ((u32::from(visible_height) * u32::from(visible_height))
+        / u32::from(total_height))
+    .max(1) as u16;
     let scrollbar_height = scrollbar_height.min(visible_height);
 
     let scroll_range = total_height.saturating_sub(visible_height);
     let scrollbar_pos = if scroll_range > 0 {
-        ((scroll_offset as u32 * (visible_height - scrollbar_height) as u32) / scroll_range as u32)
-            as u16
+        ((u32::from(scroll_offset) * u32::from(visible_height - scrollbar_height))
+            / u32::from(scroll_range)) as u16
     } else {
         0
     };

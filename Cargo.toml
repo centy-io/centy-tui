@@ -8,6 +8,13 @@ repository = "https://github.com/centy-io/centy-io"
 keywords = ["tui", "cli", "project-management", "issues"]
 categories = ["command-line-utilities"]
 
+# Lints
+# `cast_lossless`: prefer infallible `T::from(x)` / `.into()` over `as` casts that
+# widen losslessly. Makes widening explicit, documents intent, and guards against a
+# silently-lossy `as` creeping in later if a type changes.
+[lints.clippy]
+cast_lossless = "warn"
+
 [dependencies]
 # TUI Framework
 ratatui = "0.29"
